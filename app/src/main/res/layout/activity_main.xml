@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Фон -->
+    <ImageView
+        android:id="@+id/backgroundImage"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:src="@drawable/launcher_background"
+        android:contentDescription="@null" />
+
+    <!-- Split-контейнер: инфо слева, навигатор справа -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginTop="20dp"
+        android:layout_marginBottom="100dp"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:orientation="horizontal">
+
+        <!-- ЛЕВАЯ ПАНЕЛЬ: данные BMS -->
+        <TextView
+            android:id="@+id/contentText"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="10"
+            android:layout_marginEnd="10dp"
+            android:padding="24dp"
+            android:background="@drawable/bg_frosted_card"
+            android:text="Загрузка..."
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:lineSpacingExtra="3dp"
+            android:fontFamily="monospace" />
+
+        <!-- ПРАВАЯ ПАНЕЛЬ: ActivityView с Яндексом -->
+        <!-- Фон не задаём: ActivityView перекроет placeholder,
+             а пустой placeholder при ошибке будет виден на фоне плашки BMS -->
+        <FrameLayout
+            android:id="@+id/navContainer"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="12">
+
+            <!-- Placeholder: показывается, пока ActivityView не создан,
+                 или если он недоступен на прошивке.
+                 ActivityView добавляется программно ПОВЕРХ него. -->
+            <TextView
+                android:id="@+id/navPlaceholder"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="Навигатор\nзагружается..."
+                android:textColor="#AAAAAA"
+                android:textSize="16sp"
+                android:textAlignment="center"
+                android:background="@drawable/bg_frosted_card" />
+
+        </FrameLayout>
+
+    </LinearLayout>
+
+    <!-- Нижний бар: Back и Home слева -->
+    <FrameLayout
+        android:id="@+id/navBar"
+        android:layout_width="match_parent"
+        android:layout_height="80dp"
+        android:layout_gravity="bottom"
+        android:background="#CC0A1520">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_gravity="start|center_vertical"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="24dp">
+
+            <FrameLayout
+                android:id="@+id/btnBack"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginEnd="32dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?android:attr/selectableItemBackground">
+                <ImageView
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_back"
+                    android:tint="#FFFFFF"
+                    android:contentDescription="Назад" />
+            </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/btnHome"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?android:attr/selectableItemBackground">
+                <ImageView
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_home"
+                    android:tint="#FFFFFF"
+                    android:contentDescription="Домой" />
+            </FrameLayout>
+
+        </LinearLayout>
+
+    </FrameLayout>
+
+</FrameLayout>
