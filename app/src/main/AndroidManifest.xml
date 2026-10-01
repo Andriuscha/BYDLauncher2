@@ -2,37 +2,84 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.ar.bydlauncher">
 
+    <!-- Интернет -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.INTERNAL_SYSTEM_WINDOW" />
+
+    <!-- Overlay -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Геолокация автомобиля -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- Автозапуск после загрузки ГУ -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Фоновый сервис -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Системные разрешения, которые уже использовал проект -->
+    <uses-permission android:name="android.permission.INTERNAL_SYSTEM_WINDOW" />
+    <uses-permission android:name="android.permission.INJECT_EVENTS" />
 
     <application
         android:label="BYD Launcher"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
+        <!-- Главный экран / Launcher -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:stateNotNeeded="true"
             android:excludeFromRecents="true">
+
             <intent-filter android:priority="1">
+
                 <action android:name="android.intent.action.MAIN" />
+
                 <category android:name="android.intent.category.HOME" />
+
                 <category android:name="android.intent.category.DEFAULT" />
+
                 <category android:name="android.intent.category.LAUNCHER" />
+
             </intent-filter>
+
         </activity>
 
+        <!-- Экран списка поездок -->
+        <activity
+            android:name=".TripsActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:stateNotNeeded="true" />
+
+        <!-- Anchor-service: держит процесс лаунчера живым в фоне -->
+        <service
+            android:name=".service.BydBackgroundService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Автоматический запуск BYD Launcher после загрузки ГУ -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
             android:exported="true">
+
             <intent-filter android:priority="1000">
+
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+
             </intent-filter>
+
         </receiver>
 
     </application>
+
 </manifest>

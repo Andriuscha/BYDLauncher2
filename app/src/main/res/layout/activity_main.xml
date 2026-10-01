@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- Фон -->
     <ImageView
         android:id="@+id/backgroundImage"
         android:layout_width="match_parent"
@@ -12,109 +12,197 @@
         android:src="@drawable/launcher_background"
         android:contentDescription="@null" />
 
-    <!-- Split-контейнер: инфо слева, навигатор справа -->
+    <!-- Верхний отступ 60px — под оверлей-плашку с поездкой -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginTop="20dp"
-        android:layout_marginBottom="100dp"
-        android:layout_marginStart="20dp"
-        android:layout_marginEnd="20dp"
-        android:orientation="horizontal">
+        android:layout_marginTop="60px"
+        android:orientation="vertical">
 
-        <!-- ЛЕВАЯ ПАНЕЛЬ: данные BMS -->
-        <TextView
-            android:id="@+id/contentText"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="10"
-            android:layout_marginEnd="10dp"
-            android:padding="24dp"
-            android:background="@drawable/bg_frosted_card"
-            android:text="Загрузка..."
-            android:textColor="#FFFFFF"
-            android:textSize="15sp"
-            android:lineSpacingExtra="3dp"
-            android:fontFamily="monospace" />
-
-        <!-- ПРАВАЯ ПАНЕЛЬ: ActivityView с Яндексом -->
-        <!-- Фон не задаём: ActivityView перекроет placeholder,
-             а пустой placeholder при ошибке будет виден на фоне плашки BMS -->
-        <FrameLayout
-            android:id="@+id/navContainer"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="12">
-
-            <!-- Placeholder: показывается, пока ActivityView не создан,
-                 или если он недоступен на прошивке.
-                 ActivityView добавляется программно ПОВЕРХ него. -->
-            <TextView
-                android:id="@+id/navPlaceholder"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="Навигатор\nзагружается..."
-                android:textColor="#AAAAAA"
-                android:textSize="16sp"
-                android:textAlignment="center"
-                android:background="@drawable/bg_frosted_card" />
-
-        </FrameLayout>
-
-    </LinearLayout>
-
-    <!-- Нижний бар: Back и Home слева -->
-    <FrameLayout
-        android:id="@+id/navBar"
-        android:layout_width="match_parent"
-        android:layout_height="80dp"
-        android:layout_gravity="bottom"
-        android:background="#CC0A1520">
-
+        <!-- Split: слева BMS + погода, справа навигатор -->
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:layout_gravity="start|center_vertical"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingStart="24dp">
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal">
 
-            <FrameLayout
-                android:id="@+id/btnBack"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
-                android:layout_marginEnd="32dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:background="?android:attr/selectableItemBackground">
-                <ImageView
-                    android:layout_width="32dp"
-                    android:layout_height="32dp"
-                    android:layout_gravity="center"
-                    android:src="@drawable/ic_back"
-                    android:tint="#FFFFFF"
-                    android:contentDescription="Назад" />
-            </FrameLayout>
+            <!-- ЛЕВАЯ ПАНЕЛЬ -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="45"
+                android:background="@drawable/bg_frosted_card"
+                android:orientation="vertical"
+                android:padding="20dp">
 
+                <TextView
+                    android:id="@+id/weatherText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingBottom="8dp"
+                    android:text="Погода загружается…"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:fontFamily="monospace" />
+
+                <TextView
+                    android:id="@+id/temperaturesText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingBottom="10dp"
+                    android:text="🌡 Снаружи: —&#10;🌡 В салоне: —"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:fontFamily="monospace" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginBottom="10dp"
+                    android:background="#40FFFFFF" />
+
+                <ScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:id="@+id/contentText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Загрузка…"
+                        android:textColor="#FFFFFF"
+                        android:textSize="14sp"
+                        android:lineSpacingExtra="3dp"
+                        android:fontFamily="monospace" />
+
+                </ScrollView>
+
+            </LinearLayout>
+
+            <!-- ПРАВАЯ ПАНЕЛЬ: сюда прилетит Яндекс -->
             <FrameLayout
-                android:id="@+id/btnHome"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:background="?android:attr/selectableItemBackground">
-                <ImageView
-                    android:layout_width="32dp"
-                    android:layout_height="32dp"
-                    android:layout_gravity="center"
-                    android:src="@drawable/ic_home"
-                    android:tint="#FFFFFF"
-                    android:contentDescription="Домой" />
+                android:id="@+id/navContainer"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="55"
+                android:layout_marginStart="10dp">
+
+                <TextView
+                    android:id="@+id/navPlaceholder"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:text="Навигатор&#10;загружается…"
+                    android:textColor="#AAAAAA"
+                    android:textSize="16sp"
+                    android:textAlignment="center"
+                    android:background="@drawable/bg_frosted_card" />
+
             </FrameLayout>
 
         </LinearLayout>
 
-    </FrameLayout>
+        <!-- ============================================================ -->
+        <!-- НИЖНИЙ БАР: 4 кнопки в стиле hi-tech glass dock (45% ширины) -->
+        <!-- ============================================================ -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:orientation="horizontal"
+            android:paddingHorizontal="4dp"
+            android:paddingVertical="4dp">
+
+            <!-- Кнопки: 45% ширины -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="45"
+                android:orientation="horizontal"
+                android:baselineAligned="false">
+
+                <!-- 1. Навигация -->
+                <LinearLayout
+                    android:id="@+id/btnNav"
+                    style="@style/DockButton"
+                    android:background="@drawable/btn_dock_nav">
+
+                    <ImageView
+                        style="@style/DockIcon"
+                        android:src="@drawable/ic_nav"
+                        android:tint="@color/dock_icon_nav"
+                        android:contentDescription="@null" />
+
+                    <TextView
+                        android:id="@+id/labelNav"
+                        style="@style/DockLabel"
+                        android:text="Навигация" />
+                </LinearLayout>
+
+                <!-- 2. Настройки -->
+                <LinearLayout
+                    android:id="@+id/btnCar"
+                    style="@style/DockButton"
+                    android:background="@drawable/btn_dock_set">
+
+                    <ImageView
+                        style="@style/DockIcon"
+                        android:src="@drawable/ic_settings"
+                        android:tint="@color/dock_icon_set"
+                        android:contentDescription="@null" />
+
+                    <TextView
+                        android:id="@+id/labelCar"
+                        style="@style/DockLabel"
+                        android:text="Настройки" />
+                </LinearLayout>
+
+                <!-- 3. Климат -->
+                <LinearLayout
+                    android:id="@+id/btnClimate"
+                    style="@style/DockButton"
+                    android:background="@drawable/btn_dock_clim">
+
+                    <ImageView
+                        style="@style/DockIcon"
+                        android:src="@drawable/ic_climate"
+                        android:tint="@color/dock_icon_clim"
+                        android:contentDescription="@null" />
+
+                    <TextView
+                        android:id="@+id/labelClimate"
+                        style="@style/DockLabel"
+                        android:text="Климат" />
+                </LinearLayout>
+
+                <!-- 4. Поездки -->
+                <LinearLayout
+                    android:id="@+id/btnTrip"
+                    style="@style/DockButton"
+                    android:background="@drawable/btn_dock_trip">
+
+                    <ImageView
+                        style="@style/DockIcon"
+                        android:src="@drawable/ic_trip"
+                        android:tint="@color/dock_icon_trip"
+                        android:contentDescription="@null" />
+
+                    <TextView
+                        android:id="@+id/labelTrip"
+                        style="@style/DockLabel"
+                        android:text="Поездки" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Правая половина — там freeform-окно Яндекса, бар не нужен -->
+            <View
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="55" />
+
+        </LinearLayout>
+
+    </LinearLayout>
 
 </FrameLayout>

@@ -224,26 +224,32 @@ class AdbClient(private val context: Context) {
         output!!.flush()
     }
 
+    /**
+     * Читает пакет ADB из сокета.
+     *
+     * Структура заголовка (24 байта, little-endian):
+     *   [0..3]   command
+     *   [4..7]   arg0
+     *   [8..11]  arg1
+     *   [12..15] data_length
+     *   [16..19] data_crc      — начиная с adbd 2014 г. всегда 0, не проверяем
+     *   [20..23] magic         — command ^ 0xFFFFFFFF, можно не проверять
+     *
+     * Раньше здесь была проверка `data_crc == sum(payload)`, которая
+     * срабатывала на каждом непустом WRTE-пакете и забивала logcat
+     * десятками warning'ов в секунду (что мешало видеть реальные ошибки
+     * и нагружало logd).
+     */
     private fun readPacket(): Packet {
         val h = ByteBuffer.wrap(readBytes(24)).order(ByteOrder.LITTLE_ENDIAN)
         val cmd = h.int
-        val a0 = h.int
-        val a1 = h.int
+        val a0  = h.int
+        val a1  = h.int
         val len = h.int
-        val declaredChecksum = h.int
-        h.int
+        h.int   // data_crc  — всегда 0, игнорируем
+        h.int   // magic     — тоже можно не проверять
+
         val payload = if (len > 0) readBytes(len) else ByteArray(0)
-
-        var cs = 0
-        for (b in payload) cs += (b.toInt() and 0xFF)
-        if (cs != declaredChecksum) {
-            Log.w(
-                TAG,
-                "Checksum mismatch on incoming packet (cmd=0x${cmd.toString(16)}): " +
-                        "expected $declaredChecksum, got $cs"
-            )
-        }
-
         return Packet(cmd, a0, a1, payload)
     }
 

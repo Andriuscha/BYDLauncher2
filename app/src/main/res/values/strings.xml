@@ -1,3 +1,14 @@
 <resources>
     <string name="app_name">BYD Launcher</string>
+
+    <!-- Уведомление anchor-service -->
+    <string name="bg_channel_name">BYD Launcher</string>
+    <string name="bg_channel_desc">Фоновая работа лаунчера</string>
+    <string name="bg_notif_title">BYD Launcher</string>
+    <string name="bg_notif_text">Работает в фоне</string>
+
+    <!-- TripsActivity -->
+    <string name="trips_title">Поездки</string>
+    <string name="trips_empty">Пока нет завершённых поездок</string>
+    <string name="trips_back">Назад</string>
 </resources>
