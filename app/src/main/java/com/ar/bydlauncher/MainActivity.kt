@@ -74,6 +74,7 @@ class MainActivity : Activity() {
     private var currentTripId: Long? = null
     private var tripWasActive = false
     private var lastLiveUpdateTs = 0L
+    private var endMarkerWritten = false
     private val tripDetector = TripDetector()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -189,7 +190,7 @@ class MainActivity : Activity() {
                 for (o in orphans) {
                     tripRepository.finish(o.id, TripRecord(
                         startedAt = o.startedAt,
-                        endedAt = o.startedAt + o.durationMin * 60_000L,
+                        endedAt = o.endedAt ?: (o.startedAt + o.durationMin * 60_000L),
                         finished = true,
                         distanceKm = o.distanceKm,
                         durationMin = o.durationMin,
@@ -876,15 +877,17 @@ class MainActivity : Activity() {
             speedKmh = s.speedKmh,
             mileageKm = s.lifetimeKm,
             lifetimeKwh = s.lifetimeKwh,
-            powerLevel = s.powerLevel,
             socPercent = s.socPercent,
             tempOutsideC = s.tempOutsideC,
             tempInsideC = s.tempInsideC,
-            battTempC = s.maxBatTempC
+            battTempC = s.maxBatTempC,
+            driverBeltBuckled = s.driverBeltBuckled,
+            accelPercent = s.accelPercent
         )
 
         if (trip.active && !tripWasActive) {
             tripWasActive = true
+            endMarkerWritten = false
             val loc = lastKnownLocation
             val record = TripRecord(
                 startedAt = trip.startedAt,
@@ -902,8 +905,13 @@ class MainActivity : Activity() {
 
         if (trip.active && currentTripId != null) {
             val now = System.currentTimeMillis()
-            if (now - lastLiveUpdateTs >= LIVE_UPDATE_INTERVAL_MS) {
+            // Сразу пишем в БД, когда стартовал/отменился таймер конца поездки,
+            // не дожидаясь обычного 30-секундного интервала.
+            val endPending = trip.endPendingSince != null
+            val endMarkerChanged = endPending != endMarkerWritten
+            if (endMarkerChanged || now - lastLiveUpdateTs >= LIVE_UPDATE_INTERVAL_MS) {
                 lastLiveUpdateTs = now
+                endMarkerWritten = endPending
                 val loc = lastKnownLocation
                 val record = TripRecord(
                     startedAt = trip.startedAt,
@@ -916,6 +924,9 @@ class MainActivity : Activity() {
                     outsideTempAvgC = trip.outsideTempAvgC,
                     insideTempAvgC = trip.insideTempAvgC,
                     battTempAvgC = trip.battTempAvgC,
+                    endedAt = trip.endPendingSince,
+                    endSoc = trip.endSoc,
+                    endOdometerKm = trip.endOdometerKm,
                     endLat = loc?.latitude,
                     endLon = loc?.longitude
                 )
@@ -926,6 +937,7 @@ class MainActivity : Activity() {
 
         if (!trip.active && tripWasActive) {
             tripWasActive = false
+            endMarkerWritten = false
             val id = currentTripId
             currentTripId = null
             if (id != null) {
@@ -943,7 +955,7 @@ class MainActivity : Activity() {
                     outsideTempAvgC = trip.outsideTempAvgC,
                     insideTempAvgC = trip.insideTempAvgC,
                     battTempAvgC = trip.battTempAvgC,
-                    endSoc = s.socPercent?.toInt(),   // ← берём из снапшота,
+                    endSoc = trip.endSoc,   // SOC на момент отстёгивания ремня,
                     endOdometerKm = trip.endOdometerKm,
                     endLat = loc?.latitude,
                     endLon = loc?.longitude
@@ -1046,6 +1058,14 @@ class MainActivity : Activity() {
         sb.appendLine("Расход:         ${s.lifetimeKwh ?: "—"} кВт·ч")
         sb.appendLine("Пробег:         ${s.lifetimeKm ?: "—"} км")
         sb.appendLine("BMS state:      ${s.bmsState ?: "—"}")
+        sb.appendLine("КПП:            ${s.gearMode ?: "—"}   (actual: ${s.gearActualRaw ?: "—"})  [P=1 R=2 N=3 D=4]")
+        val beltStr = when (s.driverBeltBuckled) {
+            true -> "пристёгнут"
+            false -> "отстёгнут"
+            null -> "?"
+        }
+        sb.appendLine("Ремень: main=${s.beltMainRaw ?: "—"} приб.=${s.beltInstrRaw ?: "—"} LF=${s.beltLfRaw ?: "—"}  → $beltStr")
+        sb.appendLine("Педаль газа:    ${s.accelRaw ?: "—"} raw  →  ${s.accelPercent?.let { "%.0f".format(it) } ?: "—"} %")
 
         val text = sb.toString()
         val spannable = SpannableString(text)

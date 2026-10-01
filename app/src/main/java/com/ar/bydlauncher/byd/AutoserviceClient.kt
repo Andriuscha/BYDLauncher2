@@ -21,6 +21,11 @@ class AutoserviceClient(private val adb: com.ar.bydlauncher.adb.AdbClient) {
         const val DEV_AC = 1000
         const val DEV_GEARBOX = 1011
 
+        // Ремень / педаль газа / приборка (BYDAutoConstants из FID-дампа)
+        const val DEV_INSTRUMENT = 1007
+        const val DEV_SPEED = 1013
+        const val DEV_SAFETY_BELT = 1042
+
         private val PARCEL =
             Regex("""Parcel\(00000000\s+([0-9a-fA-F]{8})""")
 

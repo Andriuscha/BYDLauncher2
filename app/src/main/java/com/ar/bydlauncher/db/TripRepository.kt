@@ -66,6 +66,14 @@ class TripRepository(context: Context) {
             record.battTempAvgC?.let { put(TripDatabase.COL_BATT_TEMP, it) }
             record.endLat?.let { put(TripDatabase.COL_END_LAT, it) }
             record.endLon?.let { put(TripDatabase.COL_END_LON, it) }
+            // Текущие конечные значения: если ГУ уснёт, осиротевшая поездка закроется по ним.
+            record.endSoc?.let { put(TripDatabase.COL_END_SOC, it) }
+            record.endOdometerKm?.let { put(TripDatabase.COL_END_ODO, it) }
+            // ended_at при незавершённой поездке = момент отстёгивания ремня (идёт таймер 5 мин);
+            // null сбрасывает маркер, если ремень снова пристегнули.
+            val pendingEnd = record.endedAt
+            if (pendingEnd != null) put(TripDatabase.COL_ENDED_AT, pendingEnd)
+            else putNull(TripDatabase.COL_ENDED_AT)
         }
         val rows = db.writableDatabase.update(
             TripDatabase.TABLE, cv,
