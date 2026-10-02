@@ -920,6 +920,12 @@ class MainActivity : Activity() {
     }
 
     private suspend fun updateTrip(s: BatterySnapshot) = withContext(Dispatchers.Main) {
+        Log.i(
+            TAG,
+            "TRIP INPUT: gear=${s.gearMode}, speed=${s.speedKmh}, " +
+                    "belt=${s.driverBeltBuckled}, odo=${s.lifetimeKm}, " +
+                    "kwh=${s.lifetimeKwh}, soc=${s.socPercent}"
+        )
         val trip = tripDetector.onSnapshot(
             ts = System.currentTimeMillis(),
             gearMode = s.gearMode,
@@ -931,6 +937,15 @@ class MainActivity : Activity() {
             tempInsideC = s.tempInsideC,
             battTempC = s.maxBatTempC,
             driverBeltBuckled = s.driverBeltBuckled,
+        )
+        Log.i(
+            TAG,
+            "TRIP STATE: active=${trip.active}, " +
+                    "started=${trip.startedAt}, " +
+                    "distance=${trip.distanceKm}, " +
+                    "duration=${trip.durationMin}, " +
+                    "endPending=${trip.endPendingSince}, " +
+                    "diag=${tripDetector.lastDiag}"
         )
 
         if (trip.active && !tripWasActive) {
@@ -1111,7 +1126,6 @@ class MainActivity : Activity() {
             null -> "?"
         }
         sb.appendLine("Ремень: main=${s.beltMainRaw ?: "—"} приб.=${s.beltInstrRaw ?: "—"} LF=${s.beltLfRaw ?: "—"}  → $beltStr")
-        sb.appendLine("Педаль газа:    ${s.accelRaw ?: "—"} raw  →  ${s.accelPercent?.let { "%.0f".format(it) } ?: "—"} %")
 
         val text = sb.toString()
         val spannable = SpannableString(text)

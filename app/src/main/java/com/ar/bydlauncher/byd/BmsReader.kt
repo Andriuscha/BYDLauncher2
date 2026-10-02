@@ -148,6 +148,10 @@ class BmsReader(private val c: AutoserviceClient) {
         val insulation    = result[reqInsulation]  as? Int
         val lifetimeKwh   = result[reqLifetimeKwh] as? Float
         val lifetimeKmRaw = result[reqLifetimeKm]  as? Int
+        Log.i(
+            TAG,
+            "LIFETIME_KM: raw=$lifetimeKmRaw -> km=${lifetimeKmRaw?.let { it / 10f }}"
+        )
         val hvVoltage     = result[reqHvVoltage]   as? Int
         val hvCurrent     = result[reqHvCurrent]   as? Float
         val bmsState      = result[reqBmsState]    as? Int
