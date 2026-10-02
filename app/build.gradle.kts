@@ -44,6 +44,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("io.coil-kt:coil:2.6.0")
     implementation("io.coil-kt:coil-svg:2.6.0")
+    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("androidx.appcompat:appcompat-resources:1.7.1")  // для tint на старых API
 
     // Stub для android.app.ActivityView (@TestApi).
     // compileOnly — классы stubs НЕ попадут в APK,

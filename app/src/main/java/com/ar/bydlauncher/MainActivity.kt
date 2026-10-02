@@ -926,13 +926,11 @@ class MainActivity : Activity() {
             speedKmh = s.speedKmh,
             mileageKm = s.lifetimeKm,
             lifetimeKwh = s.lifetimeKwh,
-            powerLevel = s.powerLevel,
             socPercent = s.socPercent,
             tempOutsideC = s.tempOutsideC,
             tempInsideC = s.tempInsideC,
             battTempC = s.maxBatTempC,
             driverBeltBuckled = s.driverBeltBuckled,
-            accelPercent = s.accelPercent
         )
 
         if (trip.active && !tripWasActive) {

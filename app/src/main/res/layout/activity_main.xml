@@ -38,6 +38,7 @@
                 android:padding="20dp">
 
                 <!-- ============ WEATHER CARD ============ -->
+                <!-- ============ WEATHER CARD ============ -->
                 <LinearLayout
                     android:id="@+id/weatherCard"
                     android:layout_width="match_parent"
@@ -47,12 +48,12 @@
                     android:paddingTop="4dp"
                     android:paddingBottom="10dp">
 
-                    <!-- ИКОНКА -->
+                    <!-- ИКОНКА ПОГОДЫ -->
                     <ImageView
                         android:id="@+id/wIcon"
-                        android:layout_width="64dp"
-                        android:layout_height="64dp"
-                        android:layout_marginEnd="12dp"
+                        android:layout_width="72dp"
+                        android:layout_height="72dp"
+                        android:layout_marginEnd="14dp"
                         android:contentDescription="@null"
                         android:scaleType="fitCenter"
                         android:src="@drawable/ic_weather_placeholder" />
@@ -72,9 +73,9 @@
                             android:gravity="center_vertical">
 
                             <ImageView
-                                android:layout_width="10dp"
-                                android:layout_height="10dp"
-                                android:layout_marginEnd="4dp"
+                                android:layout_width="12dp"
+                                android:layout_height="12dp"
+                                android:layout_marginEnd="5dp"
                                 android:src="@drawable/ic_pin"
                                 app:tint="@color/c_teal"
                                 android:contentDescription="@null" />
@@ -88,7 +89,8 @@
                                 android:fontFamily="monospace"
                                 android:letterSpacing="0.08"
                                 android:textAllCaps="true"
-                                android:textSize="10sp"
+                                android:textStyle="bold"
+                                android:textSize="11.5sp"
                                 android:textColor="@color/t3"
                                 android:text="Определение…" />
                         </LinearLayout>
@@ -108,7 +110,7 @@
                                 android:fontFamily="monospace"
                                 android:includeFontPadding="false"
                                 android:letterSpacing="-0.04"
-                                android:textSize="38sp"
+                                android:textSize="52sp"
                                 android:textStyle="bold"
                                 android:textColor="@color/t1"
                                 android:text="--°" />
@@ -117,12 +119,13 @@
                                 android:id="@+id/wCond"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginStart="10dp"
-                                android:layout_marginBottom="6dp"
+                                android:layout_marginStart="12dp"
+                                android:layout_marginBottom="9dp"
                                 android:fontFamily="monospace"
                                 android:letterSpacing="0.12"
                                 android:textAllCaps="true"
-                                android:textSize="11sp"
+                                android:textStyle="bold"
+                                android:textSize="14sp"
                                 android:textColor="@color/t2"
                                 android:text="--" />
                         </LinearLayout>
@@ -133,7 +136,7 @@
                             android:layout_height="wrap_content"
                             android:orientation="horizontal"
                             android:gravity="center_vertical"
-                            android:layout_marginTop="2dp">
+                            android:layout_marginTop="3dp">
 
                             <TextView
                                 android:layout_width="wrap_content"
@@ -141,7 +144,8 @@
                                 android:fontFamily="monospace"
                                 android:letterSpacing="0.10"
                                 android:textAllCaps="true"
-                                android:textSize="9sp"
+                                android:textStyle="bold"
+                                android:textSize="11.5sp"
                                 android:textColor="@color/t3"
                                 android:text="Днём " />
 
@@ -151,16 +155,16 @@
                                 android:layout_height="wrap_content"
                                 android:fontFamily="monospace"
                                 android:textStyle="bold"
-                                android:textSize="11sp"
+                                android:textSize="14.5sp"
                                 android:textColor="@color/c_amber"
                                 android:text="--°" />
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginHorizontal="6dp"
+                                android:layout_marginHorizontal="8dp"
                                 android:fontFamily="monospace"
-                                android:textSize="10sp"
+                                android:textSize="12sp"
                                 android:textColor="@color/t3"
                                 android:text="/" />
 
@@ -170,7 +174,8 @@
                                 android:fontFamily="monospace"
                                 android:letterSpacing="0.10"
                                 android:textAllCaps="true"
-                                android:textSize="9sp"
+                                android:textStyle="bold"
+                                android:textSize="11.5sp"
                                 android:textColor="@color/t3"
                                 android:text="Ночью " />
 
@@ -180,82 +185,127 @@
                                 android:layout_height="wrap_content"
                                 android:fontFamily="monospace"
                                 android:textStyle="bold"
-                                android:textSize="11sp"
+                                android:textSize="14.5sp"
                                 android:textColor="@color/c_violet"
                                 android:text="--°" />
                         </LinearLayout>
                     </LinearLayout>
 
-                    <!-- ЧИПЫ: Улица / Салон -->
+                    <!-- ЧИПЫ: Улица / Салон (Вариант Б — иконка справа от метки) -->
                     <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
-                        android:layout_marginStart="10dp">
+                        android:layout_marginStart="-4dp">
 
-                        <!-- Улица -->
+                        <!-- ============ УЛИЦА ============ -->
                         <LinearLayout
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:orientation="vertical"
                             android:background="@drawable/bg_temp_chip_out"
-                            android:paddingStart="10dp"
-                            android:paddingEnd="10dp"
-                            android:paddingTop="6dp"
-                            android:paddingBottom="6dp"
+                            android:paddingStart="12dp"
+                            android:paddingEnd="12dp"
+                            android:paddingTop="9dp"
+                            android:paddingBottom="9dp"
                             android:layout_marginEnd="6dp"
-                            android:minWidth="64dp">
+                            android:minWidth="88dp">
 
-                            <TextView
-                                android:layout_width="wrap_content"
+                            <!-- Метка + иконка справа -->
+                            <LinearLayout
+                                android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:fontFamily="monospace"
-                                android:letterSpacing="0.10"
-                                android:textAllCaps="true"
-                                android:textSize="8sp"
-                                android:textColor="@color/t3"
-                                android:text="Улица" />
+                                android:orientation="horizontal"
+                                android:gravity="center_vertical">
+
+                                <TextView
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:fontFamily="monospace"
+                                    android:letterSpacing="0.05"
+                                    android:singleLine="true"
+                                    android:maxLines="1"
+                                    android:includeFontPadding="false"
+                                    android:textAllCaps="true"
+                                    android:textStyle="bold"
+                                    android:textSize="9sp"
+                                    android:textColor="@color/t3"
+                                    android:text="Улица" />
+
+                                <ImageView
+                                    android:layout_width="18dp"
+                                    android:layout_height="18dp"
+                                    android:layout_marginStart="6dp"
+                                    android:src="@drawable/ic_thermometer"
+                                    app:tint="@color/c_teal"
+                                    android:contentDescription="@null" />
+                            </LinearLayout>
 
                             <TextView
                                 android:id="@+id/wOut"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:layout_marginTop="3dp"
                                 android:fontFamily="monospace"
                                 android:textStyle="bold"
-                                android:textSize="16sp"
+                                android:includeFontPadding="false"
+                                android:textSize="23sp"
                                 android:textColor="@color/c_teal"
                                 android:text="--°" />
                         </LinearLayout>
 
-                        <!-- Салон -->
+                        <!-- ============ САЛОН ============ -->
                         <LinearLayout
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:orientation="vertical"
                             android:background="@drawable/bg_temp_chip_in"
-                            android:paddingStart="10dp"
-                            android:paddingEnd="10dp"
-                            android:paddingTop="6dp"
-                            android:paddingBottom="6dp"
-                            android:minWidth="64dp">
+                            android:paddingStart="12dp"
+                            android:paddingEnd="12dp"
+                            android:paddingTop="9dp"
+                            android:paddingBottom="9dp"
+                            android:minWidth="88dp">
 
-                            <TextView
-                                android:layout_width="wrap_content"
+                            <LinearLayout
+                                android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:fontFamily="monospace"
-                                android:letterSpacing="0.10"
-                                android:textAllCaps="true"
-                                android:textSize="8sp"
-                                android:textColor="@color/t3"
-                                android:text="Салон" />
+                                android:orientation="horizontal"
+                                android:gravity="center_vertical">
+
+                                <TextView
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:fontFamily="monospace"
+                                    android:letterSpacing="0.05"
+                                    android:singleLine="true"
+                                    android:maxLines="1"
+                                    android:includeFontPadding="false"
+                                    android:textAllCaps="true"
+                                    android:textStyle="bold"
+                                    android:textSize="9sp"
+                                    android:textColor="@color/t3"
+                                    android:text="Салон" />
+
+                                <ImageView
+                                    android:layout_width="18dp"
+                                    android:layout_height="18dp"
+                                    android:layout_marginStart="6dp"
+                                    android:src="@drawable/ic_thermometer"
+                                    app:tint="@color/c_amber"
+                                    android:contentDescription="@null" />
+                            </LinearLayout>
 
                             <TextView
                                 android:id="@+id/wIn"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:layout_marginTop="3dp"
                                 android:fontFamily="monospace"
                                 android:textStyle="bold"
-                                android:textSize="16sp"
+                                android:includeFontPadding="false"
+                                android:textSize="23sp"
                                 android:textColor="@color/c_amber"
                                 android:text="--°" />
                         </LinearLayout>

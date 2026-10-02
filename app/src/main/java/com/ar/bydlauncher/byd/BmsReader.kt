@@ -28,21 +28,17 @@ class BmsReader(private val c: AutoserviceClient) {
         const val FID_GEAR_MODE    = 555745336   // Gearbox.GEARBOX_AUTO_MODE_TYPE
         const val FID_GEAR_ACTUAL  = 606076980   // Gearbox.GEARBOX_ACTUAL_GERA_STATE (диагностика)
         const val FID_SPEED        = 339738632   // Statistic.STATISTIC_SPEED_SIG_VDIS
-        const val FID_POWER_LEVEL  = 315621418   // Bodywork.BODYWORK_POWER_LEVEL
 
-        // ── Ремень водителя и педаль газа (TripDetector) ──
+        // ── Ремень водителя (TripDetector) ──
         // getSafetyBeltStatus(SAFETY_BELT_AREA_MAIN): по javadoc 1 = LOCK, 0 = UNLOCK, 2 = INVALID
         const val FID_BELT_MAIN    = -1455423464 // Safety.SAFETY_BELT_COMMAND_AREA_MAIN
         const val FID_BELT_INSTR   = 692060184   // Instrument.INSTRUMENT_DD_MAIN_SAFETYBELT_STATE
         const val FID_BELT_LF      = 692060180   // Safety.SAFETY_BELT_LF_FLAG (левый перед)
-        const val FID_ACCEL_DEPTH  = 282066992   // Speed.SPEED_ACCELERATOR_DEPTH_10D
 
         /** Источник ремня для TripDetector: 0 = Safety COMMAND_AREA_MAIN, 1 = приборка, 2 = Safety LF. */
         const val BELT_SOURCE = 0
         const val BELT_BUCKLED_VALUE = 1     // SAFETY_BELT_STATE_LOCK
         const val BELT_UNBUCKLED_VALUE = 0   // SAFETY_BELT_STATE_UNLOCK (2 = INVALID → null)
-        /** getAccelerateDeepness по javadoc: DEEP_PERSENT_MIN..MAX = 0..100. */
-        const val ACCEL_FULL_SCALE = 100f
 
         // ── Температуры (AC) ───────────────────────────
         const val FID_TEMP_OUTSIDE = 1077936184  // Ac.AC_TEMP_OUT
@@ -99,9 +95,6 @@ class BmsReader(private val c: AutoserviceClient) {
     private val reqSpeed = AutoserviceClient.FieldRequest(
         AutoserviceClient.DEV_STATISTIC, FID_SPEED, AutoserviceClient.ValueType.INT)
 
-    private val reqPowerLevel = AutoserviceClient.FieldRequest(
-        AutoserviceClient.DEV_BODYWORK, FID_POWER_LEVEL, AutoserviceClient.ValueType.INT)
-
     private val reqGearActual = AutoserviceClient.FieldRequest(
         AutoserviceClient.DEV_GEARBOX, FID_GEAR_ACTUAL, AutoserviceClient.ValueType.INT)
 
@@ -113,9 +106,6 @@ class BmsReader(private val c: AutoserviceClient) {
 
     private val reqBeltLf = AutoserviceClient.FieldRequest(
         AutoserviceClient.DEV_SAFETY_BELT, FID_BELT_LF, AutoserviceClient.ValueType.INT)
-
-    private val reqAccel = AutoserviceClient.FieldRequest(
-        AutoserviceClient.DEV_SPEED, FID_ACCEL_DEPTH, AutoserviceClient.ValueType.INT)
 
     private val reqTempOutside = AutoserviceClient.FieldRequest(
         AutoserviceClient.DEV_AC, FID_TEMP_OUTSIDE, AutoserviceClient.ValueType.INT)
@@ -132,8 +122,8 @@ class BmsReader(private val c: AutoserviceClient) {
         reqLifetimeKwh, reqLifetimeKm,
         reqHvVoltage, reqHvCurrent, reqBmsState,
         reqVoltage12v, reqPowerKw,
-        reqGearMode, reqSpeed, reqPowerLevel,
-        reqGearActual, reqBeltMain, reqBeltInstr, reqBeltLf, reqAccel,
+        reqGearMode, reqSpeed,
+        reqGearActual, reqBeltMain, reqBeltInstr, reqBeltLf,
         reqTempOutside, reqTempInside
     )
 
@@ -165,14 +155,21 @@ class BmsReader(private val c: AutoserviceClient) {
         val powerKw       = result[reqPowerKw]     as? Int
         val gearMode      = result[reqGearMode]    as? Int
         val speedRaw      = result[reqSpeed]       as? Int
-        val powerLevel    = result[reqPowerLevel]  as? Int
         val gearActual    = result[reqGearActual]  as? Int
         val beltMain      = result[reqBeltMain]    as? Int
         val beltInstr     = result[reqBeltInstr]   as? Int
         val beltLf        = result[reqBeltLf]      as? Int
-        val accelRaw      = result[reqAccel]       as? Int
         val tempOutside   = result[reqTempOutside] as? Int
         val tempInside    = result[reqTempInside]  as? Int
+
+        // ADB жив, но autoservice отвечает мусором/ошибками: все ключевые поля null.
+        // Считаем это провалом чтения, чтобы сработал счётчик ошибок и переподключение.
+        if (soc == null && maxRaw == null && hvVoltage == null &&
+            lifetimeKmRaw == null && bmsState == null && gearMode == null
+        ) {
+            Log.w(TAG, "Снапшот пуст: все ключевые поля null — считаем чтение неудачным")
+            return null
+        }
 
         // ── Преобразования в единицы измерения ─────────
         return BatterySnapshot(
@@ -197,9 +194,8 @@ class BmsReader(private val c: AutoserviceClient) {
             gearMode       = gearMode,
             gearActualRaw  = gearActual,
             speedKmh       = speedRaw?.toFloat(),
-            powerLevel     = powerLevel,
 
-            // Ремень / педаль
+            // Ремень
             beltMainRaw       = beltMain,
             beltInstrRaw      = beltInstr,
             beltLfRaw         = beltLf,
@@ -208,8 +204,6 @@ class BmsReader(private val c: AutoserviceClient) {
                 2 -> beltLf
                 else -> beltMain
             }),
-            accelRaw          = accelRaw,
-            accelPercent      = accelRaw?.let { it * 100f / ACCEL_FULL_SCALE },
 
             // Температуры (AC)
             tempOutsideC   = tempOutside,

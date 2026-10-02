@@ -8,7 +8,7 @@ import android.util.Log
  * СТАРТ  (все три условия в одном снапшоте):
  *   • селектор КПП не в P;
  *   • ремень водителя пристёгнут;
- *   • педаль газа > ACCEL_START_PERCENT %.
+ *   • скорость ≥ START_SPEED_KMH (вместо педали газа: FID педали на этой машине не читается).
  *
  * КОНЕЦ:
  *   • селектор КПП в P и ремень водителя отстёгнут → запускается таймер STOP_HOLD_MS (5 мин)
@@ -31,7 +31,8 @@ class TripDetector {
     companion object {
         private const val TAG = "TripDetector"
         const val GEAR_P = 1
-        const val ACCEL_START_PERCENT = 5f
+        /** Порог начала движения. Скорость читается надёжно (Statistic), в отличие от педали. */
+        const val START_SPEED_KMH = 3f
         const val STOP_HOLD_MS = 5 * 60_000L
     }
 
@@ -60,19 +61,24 @@ class TripDetector {
     // ── Состояние активной поездки (startTs == 0 → поездки нет) ──
     private var startTs = 0L
     private var startMileage = 0.0
-    private var startKwh = 0.0
+    private var startKwh: Double? = null   // null — счётчик кВт·ч недоступен: энергия поездки = 0
     private var startSoc: Int? = null
 
     // ── Таймер конца (pendingSince == 0 → не запущен) + замороженный снимок ──
     private var pendingSince = 0L
     private var pendMileage = 0.0
-    private var pendKwh = 0.0
+    private var pendKwh: Double? = null
     private var pendSoc: Int? = null
 
     // ── Последние валидные значения (null в снапшоте не превращается в 0) ──
     private var lastMileage: Double? = null
     private var lastKwh: Double? = null
     private var lastSoc: Int? = null
+
+    /** Для экрана: почему поездка не стартует / в каком состоянии таймер конца. */
+    @Volatile
+    var lastDiag: String = ""
+        private set
 
     // ── Накопители статистики ──
     private var sampleCount = 0
@@ -95,8 +101,7 @@ class TripDetector {
         tempOutsideC: Int?,
         tempInsideC: Int?,
         battTempC: Int?,
-        driverBeltBuckled: Boolean?,
-        accelPercent: Float?
+        driverBeltBuckled: Boolean?
     ): TripState {
         mileageKm?.let { lastMileage = it.toDouble() }
         lifetimeKwh?.let { lastKwh = it.toDouble() }
@@ -111,11 +116,15 @@ class TripDetector {
             val kwh = lastKwh
             val startCond = notP &&
                     driverBeltBuckled == true &&
-                    (accelPercent ?: 0f) > ACCEL_START_PERCENT
+                    (speedKmh ?: 0f) >= START_SPEED_KMH
 
-            // Без валидных пробега и счётчика кВт·ч не стартуем — иначе база = 0
-            // и первая нормальная выборка даст «поездку» в тысячи километров.
-            if (startCond && mileage != null && kwh != null) {
+            // Без валидного пробега не стартуем — иначе база = 0 и первая нормальная
+            // выборка даст «поездку» в тысячи километров. Счётчик кВт·ч может быть null:
+            // тогда поездка пишется, но энергия и расход остаются 0.
+            lastDiag = "старт: КПП≠P=%s ремень=%s скорость=%s(≥%.0f:%s) пробег=%s кВт·ч=%s".format(
+                notP, driverBeltBuckled, speedKmh, START_SPEED_KMH,
+                (speedKmh ?: 0f) >= START_SPEED_KMH, mileage != null, kwh != null)
+            if (startCond && mileage != null) {
                 startTs = ts
                 startMileage = mileage
                 startKwh = kwh
@@ -128,12 +137,14 @@ class TripDetector {
                 insideTempSum = 0.0; insideTempSamples = 0
                 battTempSum = 0.0; battTempSamples = 0
                 Log.i(TAG, "Trip started: gear=$gearMode belt=$driverBeltBuckled " +
-                        "accel=$accelPercent soc=$startSoc odo=$startMileage")
+                        "speed=$speedKmh soc=$startSoc odo=$startMileage")
             }
             return buildState(ts)
         }
 
         // ── Поездка идёт ─────────────────────────────────────
+        lastDiag = if (pendingSince == 0L) "идёт" else
+            "идёт, таймер конца %d с".format((ts - pendingSince) / 1000)
         if (pendingSince == 0L) {
             val spd = (speedKmh ?: 0f).toDouble()
             if (spd > 0) {
@@ -154,7 +165,7 @@ class TripDetector {
             if (endCond) {
                 pendingSince = ts
                 pendMileage = lastMileage ?: startMileage
-                pendKwh = lastKwh ?: startKwh
+                pendKwh = lastKwh
                 pendSoc = lastSoc
                 Log.i(TAG, "End timer started (P + belt off): soc=$pendSoc odo=$pendMileage")
             }
@@ -168,6 +179,7 @@ class TripDetector {
                     endedAt = pendingSince,
                     endPendingSince = null
                 )
+                lastDiag = "завершена"
                 Log.i(TAG, "Trip ended: %.2f km, %.2f kWh, %d min".format(
                     closing.distanceKm, closing.energyKwh, closing.durationMin
                 ))
@@ -190,11 +202,12 @@ class TripDetector {
         val frozen = pendingSince != 0L
         val endTs = if (frozen) pendingSince else ts
         val endMileage = if (frozen) pendMileage else (lastMileage ?: startMileage)
-        val endKwh = if (frozen) pendKwh else (lastKwh ?: startKwh)
+        val endKwh = if (frozen) pendKwh else lastKwh
         val endSoc = if (frozen) pendSoc else lastSoc
 
         val distance = (endMileage - startMileage).coerceAtLeast(0.0)
-        val energy = (endKwh - startKwh).coerceAtLeast(0.0)
+        val sk = startKwh
+        val energy = if (sk != null && endKwh != null) (endKwh - sk).coerceAtLeast(0.0) else 0.0
         val consumption = if (distance > 0.5) energy / distance * 100.0 else 0.0
         val durationMin = ((endTs - startTs) / 60_000).coerceAtLeast(0L)
         val avgSpeed = if (sampleCount > 0) speedSum / sampleCount else 0.0

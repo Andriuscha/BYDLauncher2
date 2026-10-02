@@ -8,15 +8,15 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <!-- текстовые уровни -->
-    <color name="t1">#E1FFFFFF</color>
-    <color name="t2">#85FFFFFF</color>
-    <color name="t3">#47FFFFFF</color>
+    <color name="t1">#FFFFFFFF</color>        <!-- чисто белый -->
+    <color name="t2">#F0FFFFFF</color>        <!-- 94% -->
+    <color name="t3">#C7FFFFFF</color>        <!-- 78% -->
 
     <!-- tech-цвета -->
     <color name="c_cyan">#4FD1C5</color>
-    <color name="c_violet">#A88BFF</color>
-    <color name="c_teal">#3DD9C0</color>
+    <color name="c_teal">#4FD1C5</color>
     <color name="c_amber">#FFB84D</color>
+    <color name="c_violet">#A88BFF</color>
 
     <!-- стекло (для дока) -->
     <color name="glass">#07FFFFFF</color>
