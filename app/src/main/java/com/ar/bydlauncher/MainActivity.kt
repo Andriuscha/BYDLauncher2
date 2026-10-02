@@ -19,8 +19,12 @@ import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import coil.ImageLoader
+import coil.decode.SvgDecoder
+import coil.load
 import com.ar.bydlauncher.adb.AdbClient
 import com.ar.bydlauncher.byd.AutoserviceClient
 import com.ar.bydlauncher.byd.BatterySnapshot
@@ -48,19 +52,29 @@ class MainActivity : Activity() {
     private lateinit var reader: BmsReader
 
     private lateinit var contentText: TextView
-    private lateinit var weatherText: TextView
-    private lateinit var temperaturesText: TextView
+
+    // ── Погодный виджет (native) ──
+    private lateinit var wIcon: ImageView
+    private lateinit var wLocName: TextView
+    private lateinit var wTemp: TextView
+    private lateinit var wCond: TextView
+    private lateinit var wDay: TextView
+    private lateinit var wNight: TextView
+    private lateinit var wOut: TextView
+    private lateinit var wIn: TextView
+
+    private lateinit var coilLoader: ImageLoader
 
     private lateinit var navContainer: FrameLayout
     private lateinit var navPlaceholder: TextView
 
-    // ── Кнопки дока: теперь LinearLayout (было FrameLayout) ──
+    // ── Кнопки дока: LinearLayout ──
     private lateinit var btnNav: LinearLayout
     private lateinit var btnCar: LinearLayout
     private lateinit var btnClimate: LinearLayout
     private lateinit var btnTrip: LinearLayout
 
-    // ── Текстовые лейблы внутри кнопок — нужны, чтобы менять надпись «ВКЛ/ВЫКЛ» ──
+    // ── Текстовые лейблы внутри кнопок ──
     private lateinit var labelNav: TextView
     private lateinit var labelCar: TextView
     private lateinit var labelClimate: TextView
@@ -148,6 +162,10 @@ class MainActivity : Activity() {
         private const val OFFSCREEN_Y = 0
         private const val OFFSCREEN_W = 100
         private const val OFFSCREEN_H = 100
+
+        // CDN Meteocons — те же иконки, что и в HTML-виджете
+        private const val METEO_BASE =
+            "https://bmcdn.nl/assets/weather-icons/v3.0/fill/svg/"
     }
 
     // ==================================================
@@ -159,18 +177,31 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
 
         contentText = findViewById(R.id.contentText)
-        weatherText = findViewById(R.id.weatherText)
-        temperaturesText = findViewById(R.id.temperaturesText)
+
+        // ── Погодный виджет ──
+        wIcon    = findViewById(R.id.wIcon)
+        wLocName = findViewById(R.id.wLocName)
+        wTemp    = findViewById(R.id.wTemp)
+        wCond    = findViewById(R.id.wCond)
+        wDay     = findViewById(R.id.wDay)
+        wNight   = findViewById(R.id.wNight)
+        wOut     = findViewById(R.id.wOut)
+        wIn      = findViewById(R.id.wIn)
+
+        // ── Coil-лоадер для SVG-иконок погоды ──
+        coilLoader = ImageLoader.Builder(this)
+            .components { add(SvgDecoder.Factory()) }
+            .build()
+
         navContainer = findViewById(R.id.navContainer)
         navPlaceholder = findViewById(R.id.navPlaceholder)
 
-        // ── Кнопки дока: LinearLayout ──
+        // ── Кнопки дока ──
         btnNav = findViewById(R.id.btnNav)
         btnCar = findViewById(R.id.btnCar)
         btnClimate = findViewById(R.id.btnClimate)
         btnTrip = findViewById(R.id.btnTrip)
 
-        // ── Текстовые лейблы внутри кнопок (см. XML, я добавил им id) ──
         labelNav = btnNav.findViewById(R.id.labelNav)
         labelCar = btnCar.findViewById(R.id.labelCar)
         labelClimate = btnClimate.findViewById(R.id.labelClimate)
@@ -263,35 +294,20 @@ class MainActivity : Activity() {
             scope.launch { launchBydApp(BYD_CLIMATE_PKG, BYD_CLIMATE_ACT) }
         }
         btnTrip.setOnClickListener {
-            // Помечаем, что уходим "наружу", чтобы onResume поднял навигатор,
-            // если он был видим. Тот же механизм, что и для климата/настроек.
             externalAppActive = true
             navWasVisibleBeforeExternal = isNavigatorVisible
-
-            // Скрываем плашку — иначе она будет видна поверх TripsActivity
             captionMask.hide()
-
             startActivity(Intent(this@MainActivity, TripsActivity::class.java))
         }
 
-        // По умолчанию активна «Навигация»
         btnNav.isSelected = true
     }
 
-    /**
-     * Визуальное переключение активной кнопки дока.
-     * `isSelected = true` включает background selector (@drawable/btn_dock_*),
-     * который подставляет активный фон + цветную полоску + меняет цвет иконки
-     * и текста через @color/dock_icon_* / @color/dock_text.
-     */
     private fun selectDockButton(active: View) {
         listOf(btnNav, btnCar, btnClimate, btnTrip).forEach { it.isSelected = false }
         active.isSelected = true
     }
 
-    /**
-     * Обновление подписи кнопки «Навигация» — раньше это делал labelNav.
-     */
     private fun updateNavButtonState(visible: Boolean) {
         labelNav.text = if (visible) "Навигация ВКЛ" else "Навигация ВЫКЛ"
     }
@@ -451,7 +467,7 @@ class MainActivity : Activity() {
                 PackageManager.PERMISSION_GRANTED
 
         if (!fineGranted && !coarseGranted) {
-            weatherText.text = "📍 Ожидание разрешения GPS..."
+            wLocName.text = "Ожидание разрешения GPS..."
             requestPermissions(
                 arrayOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
@@ -472,10 +488,10 @@ class MainActivity : Activity() {
 
         val granted = grantResults.any { it == PackageManager.PERMISSION_GRANTED }
         if (granted) {
-            weatherText.text = "📍 Получаю GPS..."
+            wLocName.text = "Получаю GPS..."
             scope.launch { gpsTickWithRetry() }
         } else {
-            weatherText.text = "📍 Нет разрешения на GPS"
+            wLocName.text = "Нет разрешения на GPS"
         }
     }
 
@@ -640,7 +656,7 @@ class MainActivity : Activity() {
                             "lon=${location.longitude}, acc=${location.accuracy}m"
                 )
                 withContext(Dispatchers.Main) {
-                    weatherText.text = "📍 %.4f, %.4f".format(
+                    wLocName.text = "%.4f, %.4f".format(
                         location.latitude, location.longitude
                     )
                 }
@@ -654,7 +670,7 @@ class MainActivity : Activity() {
             )
             Log.w(TAG, "GPS attempt #$attempt failed, retry in ${backoff}ms")
             withContext(Dispatchers.Main) {
-                weatherText.text = "📍 GPS ГУ недоступен\nповтор через ${backoff / 1000} с..."
+                wLocName.text = "GPS ГУ недоступен, повтор через ${backoff / 1000} с..."
             }
             delay(backoff)
         }
@@ -688,7 +704,7 @@ class MainActivity : Activity() {
             if (location == null) {
                 Log.w(TAG, "Weather attempt #$attempt: no cached location yet")
                 withContext(Dispatchers.Main) {
-                    weatherText.text = "📍 Ожидание GPS..."
+                    wLocName.text = "Ожидание GPS..."
                 }
                 delay(
                     minOf(
@@ -711,38 +727,70 @@ class MainActivity : Activity() {
             )
             Log.w(TAG, "Weather attempt #$attempt failed, retry in ${backoff}ms")
             withContext(Dispatchers.Main) {
-                weatherText.text = "📍 Погода недоступна\nповтор через ${backoff / 1000} с..."
+                wLocName.text = "Погода недоступна, повтор через ${backoff / 1000} с..."
             }
             delay(backoff)
         }
         return false
     }
 
+    /**
+     * Тянет погоду по локации и заполняет виджет + грузит иконку с CDN Meteocons.
+     */
     private suspend fun loadWeatherFor(location: Location): Boolean {
         val locationName = getLocationName(location)
+
         withContext(Dispatchers.Main) {
-            weatherText.text = "📍 $locationName\nПолучаю погоду..."
+            wLocName.text = locationName
+            wCond.text = "Загрузка…"
         }
 
         val w = WeatherClient.fetch(this@MainActivity, location.latitude, location.longitude)
         if (w == null) {
             withContext(Dispatchers.Main) {
-                weatherText.text = "📍 $locationName\nПогода недоступна"
+                wCond.text = "Нет данных"
             }
             return false
         }
 
         withContext(Dispatchers.Main) {
-            weatherText.text = buildString {
-                append("📍 ").append(locationName).append('\n')
-                append(w.icon).append("  ")
-                append("%.0f".format(w.temperature)).append("°C  ")
-                append(w.description).append('\n')
-                append("Днём ").append("%.0f".format(w.tempMax))
-                append("° / Ночью ").append("%.0f".format(w.tempMin)).append('°')
+            wLocName.text = locationName
+            wTemp.text    = "%.0f°".format(w.temperature)
+            wCond.text    = w.description.uppercase()
+            wDay.text     = "%.0f°".format(w.tempMax)
+            wNight.text   = "%.0f°".format(w.tempMin)
+            wOut.text     = "%.0f°".format(w.temperature)
+            // wIn (Салон) обновляется из BMS в updateTemperatures()
+
+            val iconFile = weatherIconName(w.icon, w.description)
+            val url = METEO_BASE + iconFile
+            wIcon.load(url, coilLoader) {
+                placeholder(R.drawable.ic_weather_placeholder)
+                error(R.drawable.ic_weather_placeholder)
+                crossfade(true)
             }
         }
         return true
+    }
+
+    /**
+     * Маппинг описания/иконки погоды на имя SVG-файла Meteocons.
+     */
+    private fun weatherIconName(iconRaw: String?, description: String): String {
+        val d = (description + " " + (iconRaw ?: "")).lowercase()
+
+        return when {
+            d.contains("гроза") || d.contains("thunder")   -> "thunderstorms.svg"
+            d.contains("ливень") || d.contains("shower")   -> "rain.svg"
+            d.contains("дождь") || d.contains("rain")      -> "rain.svg"
+            d.contains("морось") || d.contains("drizzle")  -> "drizzle.svg"
+            d.contains("снег") || d.contains("snow")       -> "snow.svg"
+            d.contains("иней") || d.contains("sleet")      -> "sleet.svg"
+            d.contains("туман") || d.contains("fog")       -> "fog.svg"
+            d.contains("облач") || d.contains("cloud")     -> "overcast.svg"
+            d.contains("перемен") || d.contains("partly")  -> "partly-cloudy-day.svg"
+            else -> "clear-day.svg"
+        }
     }
 
     // ==================================================
@@ -862,12 +910,13 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * Обновляет чипы «Улица» и «Салон» из BMS.
+     * Иконку «Улица» погода тоже пишет — кто последний, тот и прав.
+     */
     private suspend fun updateTemperatures(s: BatterySnapshot) = withContext(Dispatchers.Main) {
-        temperaturesText.text = buildString {
-            append("🌡 Снаружи: ").append(s.tempOutsideC?.let { "$it°C" } ?: "—")
-            append('\n')
-            append("🌡 В салоне: ").append(s.tempInsideC?.let { "$it°C" } ?: "—")
-        }
+        s.tempOutsideC?.let { wOut.text = "$it°" }
+        s.tempInsideC?.let  { wIn.text  = "$it°" }
     }
 
     private suspend fun updateTrip(s: BatterySnapshot) = withContext(Dispatchers.Main) {
@@ -877,6 +926,7 @@ class MainActivity : Activity() {
             speedKmh = s.speedKmh,
             mileageKm = s.lifetimeKm,
             lifetimeKwh = s.lifetimeKwh,
+            powerLevel = s.powerLevel,
             socPercent = s.socPercent,
             tempOutsideC = s.tempOutsideC,
             tempInsideC = s.tempInsideC,
@@ -905,8 +955,6 @@ class MainActivity : Activity() {
 
         if (trip.active && currentTripId != null) {
             val now = System.currentTimeMillis()
-            // Сразу пишем в БД, когда стартовал/отменился таймер конца поездки,
-            // не дожидаясь обычного 30-секундного интервала.
             val endPending = trip.endPendingSince != null
             val endMarkerChanged = endPending != endMarkerWritten
             if (endMarkerChanged || now - lastLiveUpdateTs >= LIVE_UPDATE_INTERVAL_MS) {
@@ -955,7 +1003,7 @@ class MainActivity : Activity() {
                     outsideTempAvgC = trip.outsideTempAvgC,
                     insideTempAvgC = trip.insideTempAvgC,
                     battTempAvgC = trip.battTempAvgC,
-                    endSoc = trip.endSoc,   // SOC на момент отстёгивания ремня,
+                    endSoc = trip.endSoc,
                     endOdometerKm = trip.endOdometerKm,
                     endLat = loc?.latitude,
                     endLon = loc?.longitude

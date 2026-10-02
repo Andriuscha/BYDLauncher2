@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- ============================================================ -->
+    <!-- DockButton — стиль для LinearLayout кнопки дока               -->
+    <!-- ============================================================ -->
+    <style name="DockButton">
+        <!-- Размер: кнопки равные, делят ширину контейнера -->
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+
+        <!-- Отступ между кнопками (снаружи) -->
+        <item name="android:layout_margin">3dp</item>
+
+        <!-- Внутри — иконка + текст по горизонтали -->
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center</item>
+
+        <!-- Кликабельность: без этих двух строк LinearLayout не получает focus -->
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+
+        <!-- Отступы по бокам, чтобы контент не прилипал к краям -->
+        <item name="android:paddingHorizontal">10dp</item>
+    </style>
+
+    <!-- ============================================================ -->
+    <!-- DockIcon — стиль для ImageView внутри кнопки дока            -->
+    <!-- ============================================================ -->
+    <style name="DockIcon">
+        <item name="android:layout_width">18dp</item>
+        <item name="android:layout_height">18dp</item>
+
+        <!-- Отступ справа, чтобы текст не прилипал к иконке -->
+        <item name="android:layout_marginEnd">8dp</item>
+
+        <!-- Иконка вертикально центрируется относительно текста -->
+        <item name="android:layout_gravity">center_vertical</item>
+    </style>
+
+    <!-- ============================================================ -->
+    <!-- DockLabel — стиль для TextView внутри кнопки дока            -->
+    <!-- ============================================================ -->
+    <style name="DockLabel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <!-- Цвет — из селектора @color/dock_text:
+             активна → t1 (ярко-белый), неактивна → t2 (приглушённый) -->
+        <item name="android:textColor">@color/dock_text</item>
+
+        <!-- Размер текста: 11sp, как в веб-версии -->
+        <item name="android:textSize">11sp</item>
+
+        <!-- Моно-шрифт: придаёт «пультовый» вид -->
+        <item name="android:fontFamily">monospace</item>
+
+        <!-- Межбуквенное расстояние: 0.12 em ≈ 1.2px при 11sp.
+             В Android letterSpacing в em, а не в px! -->
+        <item name="android:letterSpacing">0.12</item>
+
+        <!-- Все прописные буквы, как в веб-версии -->
+        <item name="android:textAllCaps">true</item>
+
+        <!-- Текст не обрезается, может занимать несколько строк, но
+             у нас короткие подписи — singleLine не нужен -->
+    </style>
+
+</resources>

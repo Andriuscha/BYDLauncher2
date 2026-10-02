@@ -19,14 +19,16 @@
         android:layout_marginTop="60px"
         android:orientation="vertical">
 
-        <!-- Split: слева BMS + погода, справа навигатор -->
+        <!-- Split: слева погода + BMS, справа навигатор -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
             android:orientation="horizontal">
 
-            <!-- ЛЕВАЯ ПАНЕЛЬ -->
+            <!-- ============================================================ -->
+            <!-- ЛЕВАЯ КОЛОНКА: погода + BMS                                  -->
+            <!-- ============================================================ -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
@@ -35,32 +37,240 @@
                 android:orientation="vertical"
                 android:padding="20dp">
 
-                <TextView
-                    android:id="@+id/weatherText"
+                <!-- ============ WEATHER CARD ============ -->
+                <LinearLayout
+                    android:id="@+id/weatherCard"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:paddingBottom="8dp"
-                    android:text="Погода загружается…"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp"
-                    android:fontFamily="monospace" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="10dp">
 
-                <TextView
-                    android:id="@+id/temperaturesText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:paddingBottom="10dp"
-                    android:text="🌡 Снаружи: —&#10;🌡 В салоне: —"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp"
-                    android:fontFamily="monospace" />
+                    <!-- ИКОНКА -->
+                    <ImageView
+                        android:id="@+id/wIcon"
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:layout_marginEnd="12dp"
+                        android:contentDescription="@null"
+                        android:scaleType="fitCenter"
+                        android:src="@drawable/ic_weather_placeholder" />
 
+                    <!-- ЦЕНТР -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <!-- Локация -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical">
+
+                            <ImageView
+                                android:layout_width="10dp"
+                                android:layout_height="10dp"
+                                android:layout_marginEnd="4dp"
+                                android:src="@drawable/ic_pin"
+                                app:tint="@color/c_teal"
+                                android:contentDescription="@null" />
+
+                            <TextView
+                                android:id="@+id/wLocName"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:singleLine="true"
+                                android:ellipsize="end"
+                                android:fontFamily="monospace"
+                                android:letterSpacing="0.08"
+                                android:textAllCaps="true"
+                                android:textSize="10sp"
+                                android:textColor="@color/t3"
+                                android:text="Определение…" />
+                        </LinearLayout>
+
+                        <!-- Температура + условие -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="bottom"
+                            android:layout_marginTop="2dp">
+
+                            <TextView
+                                android:id="@+id/wTemp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:includeFontPadding="false"
+                                android:letterSpacing="-0.04"
+                                android:textSize="38sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/t1"
+                                android:text="--°" />
+
+                            <TextView
+                                android:id="@+id/wCond"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="10dp"
+                                android:layout_marginBottom="6dp"
+                                android:fontFamily="monospace"
+                                android:letterSpacing="0.12"
+                                android:textAllCaps="true"
+                                android:textSize="11sp"
+                                android:textColor="@color/t2"
+                                android:text="--" />
+                        </LinearLayout>
+
+                        <!-- Днём / Ночью -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:layout_marginTop="2dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:letterSpacing="0.10"
+                                android:textAllCaps="true"
+                                android:textSize="9sp"
+                                android:textColor="@color/t3"
+                                android:text="Днём " />
+
+                            <TextView
+                                android:id="@+id/wDay"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:textStyle="bold"
+                                android:textSize="11sp"
+                                android:textColor="@color/c_amber"
+                                android:text="--°" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginHorizontal="6dp"
+                                android:fontFamily="monospace"
+                                android:textSize="10sp"
+                                android:textColor="@color/t3"
+                                android:text="/" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:letterSpacing="0.10"
+                                android:textAllCaps="true"
+                                android:textSize="9sp"
+                                android:textColor="@color/t3"
+                                android:text="Ночью " />
+
+                            <TextView
+                                android:id="@+id/wNight"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:textStyle="bold"
+                                android:textSize="11sp"
+                                android:textColor="@color/c_violet"
+                                android:text="--°" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- ЧИПЫ: Улица / Салон -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginStart="10dp">
+
+                        <!-- Улица -->
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:background="@drawable/bg_temp_chip_out"
+                            android:paddingStart="10dp"
+                            android:paddingEnd="10dp"
+                            android:paddingTop="6dp"
+                            android:paddingBottom="6dp"
+                            android:layout_marginEnd="6dp"
+                            android:minWidth="64dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:letterSpacing="0.10"
+                                android:textAllCaps="true"
+                                android:textSize="8sp"
+                                android:textColor="@color/t3"
+                                android:text="Улица" />
+
+                            <TextView
+                                android:id="@+id/wOut"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:textStyle="bold"
+                                android:textSize="16sp"
+                                android:textColor="@color/c_teal"
+                                android:text="--°" />
+                        </LinearLayout>
+
+                        <!-- Салон -->
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:background="@drawable/bg_temp_chip_in"
+                            android:paddingStart="10dp"
+                            android:paddingEnd="10dp"
+                            android:paddingTop="6dp"
+                            android:paddingBottom="6dp"
+                            android:minWidth="64dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:letterSpacing="0.10"
+                                android:textAllCaps="true"
+                                android:textSize="8sp"
+                                android:textColor="@color/t3"
+                                android:text="Салон" />
+
+                            <TextView
+                                android:id="@+id/wIn"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:textStyle="bold"
+                                android:textSize="16sp"
+                                android:textColor="@color/c_amber"
+                                android:text="--°" />
+                        </LinearLayout>
+
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- разделитель под виджетом -->
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginBottom="10dp"
                     android:background="#40FFFFFF" />
 
+                <!-- ============ BMS: текстовый вывод ============ -->
                 <ScrollView
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
@@ -80,7 +290,9 @@
 
             </LinearLayout>
 
-            <!-- ПРАВАЯ ПАНЕЛЬ: сюда прилетит Яндекс -->
+            <!-- ============================================================ -->
+            <!-- ПРАВАЯ КОЛОНКА: сюда прилетит Яндекс                          -->
+            <!-- ============================================================ -->
             <FrameLayout
                 android:id="@+id/navContainer"
                 android:layout_width="0dp"
@@ -113,7 +325,6 @@
             android:paddingHorizontal="4dp"
             android:paddingVertical="4dp">
 
-            <!-- Кнопки: 45% ширины -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
@@ -130,7 +341,7 @@
                     <ImageView
                         style="@style/DockIcon"
                         android:src="@drawable/ic_nav"
-                        android:tint="@color/dock_icon_nav"
+                        app:tint="@color/dock_icon_nav"
                         android:contentDescription="@null" />
 
                     <TextView
@@ -148,7 +359,7 @@
                     <ImageView
                         style="@style/DockIcon"
                         android:src="@drawable/ic_settings"
-                        android:tint="@color/dock_icon_set"
+                        app:tint="@color/dock_icon_set"
                         android:contentDescription="@null" />
 
                     <TextView
@@ -166,7 +377,7 @@
                     <ImageView
                         style="@style/DockIcon"
                         android:src="@drawable/ic_climate"
-                        android:tint="@color/dock_icon_clim"
+                        app:tint="@color/dock_icon_clim"
                         android:contentDescription="@null" />
 
                     <TextView
@@ -184,7 +395,7 @@
                     <ImageView
                         style="@style/DockIcon"
                         android:src="@drawable/ic_trip"
-                        android:tint="@color/dock_icon_trip"
+                        app:tint="@color/dock_icon_trip"
                         android:contentDescription="@null" />
 
                     <TextView

@@ -7,4 +7,20 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- текстовые уровни -->
+    <color name="t1">#E1FFFFFF</color>
+    <color name="t2">#85FFFFFF</color>
+    <color name="t3">#47FFFFFF</color>
+
+    <!-- tech-цвета -->
+    <color name="c_cyan">#4FD1C5</color>
+    <color name="c_violet">#A88BFF</color>
+    <color name="c_teal">#3DD9C0</color>
+    <color name="c_amber">#FFB84D</color>
+
+    <!-- стекло (для дока) -->
+    <color name="glass">#07FFFFFF</color>
+    <color name="glass_active">#0FFFFFFF</color>
+    <color name="stroke_glass">#0FFFFFFF</color>
+    <color name="stroke_active">#33FFFFFF</color>
 </resources>
