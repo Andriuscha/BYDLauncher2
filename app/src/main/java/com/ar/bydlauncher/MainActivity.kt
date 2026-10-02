@@ -133,7 +133,7 @@ class MainActivity : Activity() {
 
         private const val NOMINAL_KWH = 44.9
         private const val SPLIT_RATIO = 0.45
-        private const val CAPTION_HEIGHT_PX = 60
+        private const val CAPTION_HEIGHT_PX = 56
 
         private const val FIND_STACK_MAX_ATTEMPTS = 8
         private const val FIND_STACK_RETRY_DELAY_MS = 500L
@@ -1028,21 +1028,17 @@ class MainActivity : Activity() {
             }
         }
 
-        val txt = if (trip.active) {
-            "🚗  %.1f км  ·  %.2f кВт·ч  ·  %.1f кВт·ч/100км  ·  %d мин"
-                .format(
-                    trip.distanceKm,
-                    trip.energyKwh,
-                    trip.consumptionPer100Km,
-                    trip.durationMin
-                )
-        } else {
-            "Поездка не начата"
-        }
-
+        val txt = if (trip.active) "В поездке" else "Поездка не начата"
         lastCaptionText = txt
+
         if (isNavigatorVisible) {
-            captionMask.updateText(txt)
+            captionMask.updateTrip(
+                active = trip.active,
+                distanceKm = trip.distanceKm,
+                energyKwh = trip.energyKwh,
+                consumption = trip.consumptionPer100Km,
+                durationMin = trip.durationMin.toInt()
+            )
         }
     }
 
