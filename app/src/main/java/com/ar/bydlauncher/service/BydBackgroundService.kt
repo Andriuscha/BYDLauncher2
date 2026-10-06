@@ -38,21 +38,29 @@ class BydBackgroundService : Service() {
         const val ACTION_STOP = "com.ar.bydlauncher.action.STOP"
 
         fun start(context: Context) {
-            val i = Intent(context, BydBackgroundService::class.java).apply {
-                action = ACTION_START
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(i)
-            } else {
-                context.startService(i)
+            try {
+                val i = Intent(context, BydBackgroundService::class.java).apply {
+                    action = ACTION_START
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(i)
+                } else {
+                    context.startService(i)
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "start() failed: ${t.javaClass.simpleName}: ${t.message}", t)
             }
         }
 
         fun stop(context: Context) {
-            val i = Intent(context, BydBackgroundService::class.java).apply {
-                action = ACTION_STOP
+            try {
+                val i = Intent(context, BydBackgroundService::class.java).apply {
+                    action = ACTION_STOP
+                }
+                context.startService(i)
+            } catch (t: Throwable) {
+                Log.e(TAG, "stop() failed: ${t.javaClass.simpleName}: ${t.message}", t)
             }
-            context.startService(i)
         }
     }
 
@@ -61,8 +69,16 @@ class BydBackgroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "onCreate")
-        createNotificationChannel()
-        startForeground(NOTIF_ID, buildNotification())
+
+        // На Android 14+ startForeground может бросить исключение,
+        // если в манифесте не объявлен foregroundServiceType.
+        // Не роняем сервис — просто не становимся foreground.
+        try {
+            createNotificationChannel()
+            startForeground(NOTIF_ID, buildNotification())
+        } catch (t: Throwable) {
+            Log.e(TAG, "startForeground failed in onCreate: ${t.javaClass.simpleName}: ${t.message}", t)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -70,12 +86,20 @@ class BydBackgroundService : Service() {
 
         when (intent?.action) {
             ACTION_STOP -> {
-                stopForeground(STOP_FOREGROUND_REMOVE)
+                try {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } catch (t: Throwable) {
+                    Log.w(TAG, "stopForeground failed: ${t.message}")
+                }
                 stopSelf()
                 return START_NOT_STICKY
             }
             else -> {
-                startForeground(NOTIF_ID, buildNotification())
+                try {
+                    startForeground(NOTIF_ID, buildNotification())
+                } catch (t: Throwable) {
+                    Log.e(TAG, "startForeground failed in onStartCommand: ${t.javaClass.simpleName}: ${t.message}", t)
+                }
                 return START_STICKY
             }
         }

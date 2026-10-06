@@ -23,16 +23,20 @@ class CarLocationProvider(
 
     companion object {
         private const val TAG = "CarLocationProvider"
+
+        /** Курс считается валидным, если он не «шум» (0 = нет данных). */
+        private const val MIN_VALID_BEARING_SPEED_KMH = 3f
     }
 
     /**
+     * Последний известный курс машины (0..360).
+     * Обновляется при каждом успешном GPS-запросе.
+     */
+    @Volatile
+    private var lastValidBearing: Float = 0f
+
+    /**
      * Получает свежую позицию ГУ.
-     *
-     * Сначала используется настоящий GPS_PROVIDER.
-     * Если GPS недоступен, используется NETWORK_PROVIDER
-     * как запасной вариант.
-     *
-     * Никакая сохранённая lastKnownLocation здесь не используется.
      */
     suspend fun getCurrentLocation(): Location? {
         return withContext(Dispatchers.Main) {
@@ -55,17 +59,33 @@ class CarLocationProvider(
 
             Log.i(TAG, "providers: gps=$gpsEnabled network=$networkEnabled")
 
-            when {
+            val location = when {
                 gpsEnabled -> requestFreshLocation(LocationManager.GPS_PROVIDER)
-
                 networkEnabled -> requestFreshLocation(LocationManager.NETWORK_PROVIDER)
-
                 else -> {
                     Log.w(TAG, "no location provider enabled")
                     null
                 }
             }
+
+            // Обновляем последний валидный bearing
+            location?.let { loc ->
+                if (loc.hasBearing() && loc.speed * 3.6f > MIN_VALID_BEARING_SPEED_KMH) {
+                    lastValidBearing = loc.bearing
+                }
+            }
+
+            location
         }
+    }
+
+    /**
+     * Возвращает актуальный курс машины.
+     * Если сейчас машина стоит — возвращает последний известный курс.
+     * Если данных никогда не было — возвращает null.
+     */
+    fun getCurrentBearing(): Float? {
+        return if (lastValidBearing > 0f) lastValidBearing else null
     }
 
     private fun hasLocationPermission(): Boolean {

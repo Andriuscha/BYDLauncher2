@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0A0E18"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.1"
+            android:text="TECH · FID ТЕСТЕР"
+            android:textAllCaps="true"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/techClose"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_chip"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.1"
+            android:paddingHorizontal="20dp"
+            android:paddingVertical="10dp"
+            android:text="ЗАКРЫТЬ"
+            android:textAllCaps="true"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Панель ввода -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp"
+        android:background="@drawable/bg_chip"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:baselineAligned="false"
+            android:orientation="horizontal">
+
+            <!-- Device -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.08"
+                    android:text="DEVICE"
+                    android:textAllCaps="true"
+                    android:textColor="#B0B4BD"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <EditText
+                    android:id="@+id/techDevice"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:background="@null"
+                    android:fontFamily="monospace"
+                    android:inputType="number"
+                    android:text="1014"
+                    android:textColor="#FFFFFF"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:layout_marginHorizontal="10dp"
+                android:background="#3A3E48" />
+
+            <!-- FID -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="2"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.08"
+                    android:text="FID"
+                    android:textAllCaps="true"
+                    android:textColor="#B0B4BD"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <EditText
+                    android:id="@+id/techFid"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:background="@null"
+                    android:fontFamily="monospace"
+                    android:inputType="number"
+                    android:text="1145045032"
+                    android:textColor="#FFFFFF"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Кнопки действий -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:id="@+id/techReadInt"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@drawable/bg_soh_box"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:paddingVertical="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.08"
+                    android:text="READ INT"
+                    android:textAllCaps="true"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="8dp"
+                android:layout_height="1dp" />
+
+            <LinearLayout
+                android:id="@+id/techReadFloat"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@drawable/bg_chip"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:paddingVertical="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.08"
+                    android:text="READ FLOAT"
+                    android:textAllCaps="true"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="8dp"
+                android:layout_height="1dp" />
+
+            <LinearLayout
+                android:id="@+id/techWrite"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@drawable/bg_delta_box"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:paddingVertical="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.08"
+                    android:text="WRITE"
+                    android:textAllCaps="true"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Поле значения для WRITE -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:letterSpacing="0.08"
+                android:text="VALUE:"
+                android:textAllCaps="true"
+                android:textColor="#B0B4BD"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/techValue"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:background="@null"
+                android:fontFamily="monospace"
+                android:inputType="number|numberSigned"
+                android:text="1"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Результат -->
+    <TextView
+        android:id="@+id/techResult"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp"
+        android:background="@drawable/bg_chip"
+        android:fontFamily="monospace"
+        android:minHeight="80dp"
+        android:padding="12dp"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:text="—" />
+
+    <!-- Лог -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="6dp"
+        android:fontFamily="monospace"
+        android:letterSpacing="0.1"
+        android:text="ЖУРНАЛ"
+        android:textAllCaps="true"
+        android:textColor="#B0B4BD"
+        android:textSize="10sp"
+        android:textStyle="bold" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@drawable/bg_chip"
+        android:fillViewport="true"
+        android:padding="10dp"
+        android:scrollbars="none">
+
+        <TextView
+            android:id="@+id/techLog"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textColor="#B0B4BD"
+            android:textSize="11sp" />
+    </ScrollView>
+
+</LinearLayout>

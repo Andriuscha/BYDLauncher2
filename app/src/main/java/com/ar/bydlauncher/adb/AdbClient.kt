@@ -28,23 +28,25 @@ class AdbClient(private val context: Context) {
     private var keyPair: KeyPair? = null
     private var nextLocalId = 1
 
-    /** Мьютекс: два одновременных shell() не пересекутся.
-     *  Опрос BMS и команды кнопок встанут в очередь. */
+    /** Мьютекс: два одновременных shell() не пересекутся. */
     private val shellLock = Any()
+
+    /** Мьютекс для connect/disconnect. */
+    private val connectLock = Any()
 
     companion object {
         private const val TAG = "AdbClient"
         private const val HOST = "127.0.0.1"
         private const val PORT = 5555
 
-        // Команды протокола ADB (little-endian ASCII)
-        const val A_CNXN = 0x4E584E43  // "CNXN"
-        const val A_AUTH = 0x48545541  // "AUTH"
-        const val A_OPEN = 0x4E45504F  // "OPEN"
-        const val A_OKAY = 0x59414B4F  // "OKAY"
-        const val A_CLSE = 0x45534C43  // "CLSE"
-        const val A_WRTE = 0x45545257  // "WRTE"
-        const val A_STLS = 0x534C5453  // "STLS"
+        // ── ADB protocol commands ──
+        const val A_CNXN = 0x4E584E43
+        const val A_AUTH = 0x48545541
+        const val A_OPEN = 0x4E45504F
+        const val A_OKAY = 0x59414B4F
+        const val A_CLSE = 0x45534C43
+        const val A_WRTE = 0x45545257
+        const val A_STLS = 0x534C5453
 
         const val A_VERSION = 0x01000001
         const val MAX_PAYLOAD = 256 * 1024
@@ -63,6 +65,38 @@ class AdbClient(private val context: Context) {
             0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2B, 0x0E,
             0x03, 0x02, 0x1A, 0x05, 0x00, 0x04, 0x14
         )
+
+        /** Синглтон — все Activity используют одно соединение. */
+        @Volatile
+        private var instance: AdbClient? = null
+
+        @Synchronized
+        fun get(context: Context): AdbClient {
+            var c = instance
+            if (c == null) {
+                c = AdbClient(context.applicationContext)
+                try {
+                    c.connect()
+                } catch (t: Throwable) {
+                    Log.e(TAG, "AdbClient.get: connect failed", t)
+                }
+                instance = c
+            }
+            return c
+        }
+
+        /** Проверяет соединение и при необходимости переподключается. */
+        fun ensureConnected(context: Context): AdbClient {
+            val c = get(context)
+            if (!c.isConnected()) {
+                try {
+                    c.connect()
+                } catch (t: Throwable) {
+                    Log.e(TAG, "ensureConnected: connect failed", t)
+                }
+            }
+            return c
+        }
     }
 
     fun isConnected(): Boolean {
@@ -70,7 +104,15 @@ class AdbClient(private val context: Context) {
         return s.isConnected && !s.isClosed
     }
 
-    fun connect(): Boolean {
+    // ═══════════════════════════════════════════════
+    //  Connect / Disconnect
+    // ═══════════════════════════════════════════════
+
+    fun connect(): Boolean = synchronized(connectLock) {
+        // Закроем старый сокет, чтобы не течь
+        try { socket?.close() } catch (_: Exception) {}
+        socket = null; input = null; output = null
+
         return try {
             keyPair = loadOrGenerateKeys()
 
@@ -126,6 +168,11 @@ class AdbClient(private val context: Context) {
         }
     }
 
+    fun disconnect() = synchronized(connectLock) {
+        try { socket?.close() } catch (_: Exception) {}
+        socket = null; input = null; output = null
+    }
+
     private fun authenticate(token: ByteArray): Boolean {
         return try {
             Log.i(TAG, "Auth step 1: signing token (${token.size}B)")
@@ -164,105 +211,116 @@ class AdbClient(private val context: Context) {
         }
     }
 
+    // ═══════════════════════════════════════════════
+    //  shell() с retry-on-reconnect
+    // ═══════════════════════════════════════════════
+
     /**
-     * Отправляет shell-команду и возвращает её stdout (trim'ленный).
-     * Синхронизирован: два параллельных shell() не пересекутся.
-     * null — если соединение оборвалось или произошла ошибка протокола.
+     * Отправляет shell-команду.
+     *
+     * При сбое (IOException/NPE, обрыв связи) — 1 раз переподключается
+     * и повторяет команду. Это лечит «залипшие» состояния, когда adbd
+     * на ГУ перезапустился, а клиент об этом не знает.
      */
     fun shell(command: String): String? = synchronized(shellLock) {
         try {
-            val localId = nextLocalId++
-            writePacket(A_OPEN, localId, 0, "shell:$command\u0000".toByteArray())
+            return@synchronized doShell(command)
+        } catch (e: Exception) {
+            Log.w(TAG, "shell failed, reconnecting: ${e.javaClass.simpleName}: ${e.message}")
+        }
 
-            var remoteId = 0
-            for (i in 0 until 20) {
-                val pkt = readPacket()
-                if (pkt.command == A_OKAY && pkt.arg1 == localId) {
-                    remoteId = pkt.arg0
-                    break
-                }
-            }
-            if (remoteId == 0) {
-                Log.e(TAG, "shell: never got OKAY for localId=$localId")
+        // Попытка переподключения
+        try {
+            disconnect()
+            if (!connect()) {
+                Log.e(TAG, "shell: reconnect failed")
                 return@synchronized null
             }
-
-            val sb = StringBuilder()
-            for (i in 0 until 500) {
-                val pkt = readPacket()
-                when {
-                    pkt.command == A_WRTE && pkt.arg0 == remoteId && pkt.arg1 == localId -> {
-                        sb.append(String(pkt.payload, Charsets.UTF_8))
-                        writePacket(A_OKAY, localId, remoteId, ByteArray(0))
-                    }
-                    pkt.command == A_CLSE && pkt.arg0 == remoteId -> {
-                        writePacket(A_CLSE, localId, remoteId, ByteArray(0))
-                        break
-                    }
-                }
-            }
-            sb.toString().trim()
-        } catch (e: Exception) {
-            Log.e(TAG, "shell failed: $command", e)
-            null
+            return@synchronized doShell(command)
+        } catch (e2: Exception) {
+            Log.e(TAG, "shell retry failed: ${e2.javaClass.simpleName}: ${e2.message}")
+            return@synchronized null
         }
     }
 
-    fun disconnect() {
-        try { socket?.close() } catch (_: Exception) {}
-        socket = null; input = null; output = null
+    private fun doShell(command: String): String? {
+        val localId = nextLocalId++
+        writePacket(A_OPEN, localId, 0, "shell:$command\u0000".toByteArray())
+
+        var remoteId = 0
+        for (i in 0 until 20) {
+            val pkt = readPacket()
+            if (pkt.command == A_OKAY && pkt.arg1 == localId) {
+                remoteId = pkt.arg0
+                break
+            }
+        }
+        if (remoteId == 0) {
+            Log.e(TAG, "shell: never got OKAY for localId=$localId")
+            return null
+        }
+
+        val sb = StringBuilder()
+        for (i in 0 until 500) {
+            val pkt = readPacket()
+            when {
+                pkt.command == A_WRTE && pkt.arg0 == remoteId && pkt.arg1 == localId -> {
+                    sb.append(String(pkt.payload, Charsets.UTF_8))
+                    writePacket(A_OKAY, localId, remoteId, ByteArray(0))
+                }
+                pkt.command == A_CLSE && pkt.arg0 == remoteId -> {
+                    writePacket(A_CLSE, localId, remoteId, ByteArray(0))
+                    break
+                }
+            }
+        }
+        return sb.toString().trim()
     }
 
+    // ═══════════════════════════════════════════════
+    //  Низкоуровневый ввод/вывод
+    // ═══════════════════════════════════════════════
+
     private fun writePacket(cmd: Int, arg0: Int, arg1: Int, payload: ByteArray) {
+        val out = output ?: throw IOException("AdbClient: output is null (не подключено)")
         val buf = ByteBuffer.allocate(24).order(ByteOrder.LITTLE_ENDIAN)
         buf.putInt(cmd); buf.putInt(arg0); buf.putInt(arg1); buf.putInt(payload.size)
         var cs = 0
         for (b in payload) cs += (b.toInt() and 0xFF)
         buf.putInt(cs); buf.putInt(cmd.inv())
-        output!!.write(buf.array())
-        if (payload.isNotEmpty()) output!!.write(payload)
-        output!!.flush()
+        out.write(buf.array())
+        if (payload.isNotEmpty()) out.write(payload)
+        out.flush()
     }
 
-    /**
-     * Читает пакет ADB из сокета.
-     *
-     * Структура заголовка (24 байта, little-endian):
-     *   [0..3]   command
-     *   [4..7]   arg0
-     *   [8..11]  arg1
-     *   [12..15] data_length
-     *   [16..19] data_crc      — начиная с adbd 2014 г. всегда 0, не проверяем
-     *   [20..23] magic         — command ^ 0xFFFFFFFF, можно не проверять
-     *
-     * Раньше здесь была проверка `data_crc == sum(payload)`, которая
-     * срабатывала на каждом непустом WRTE-пакете и забивала logcat
-     * десятками warning'ов в секунду (что мешало видеть реальные ошибки
-     * и нагружало logd).
-     */
     private fun readPacket(): Packet {
         val h = ByteBuffer.wrap(readBytes(24)).order(ByteOrder.LITTLE_ENDIAN)
         val cmd = h.int
         val a0  = h.int
         val a1  = h.int
         val len = h.int
-        h.int   // data_crc  — всегда 0, игнорируем
-        h.int   // magic     — тоже можно не проверять
+        h.int   // data_crc — игнорируем
+        h.int   // magic    — игнорируем
 
         val payload = if (len > 0) readBytes(len) else ByteArray(0)
         return Packet(cmd, a0, a1, payload)
     }
 
     private fun readBytes(n: Int): ByteArray {
+        val inp = input ?: throw IOException("AdbClient: input is null (не подключено)")
         val buf = ByteArray(n)
         var r = 0
         while (r < n) {
-            val x = input!!.read(buf, r, n - r)
+            val x = inp.read(buf, r, n - r)
             if (x < 0) throw IOException("EOF after $r of $n bytes")
             r += x
         }
         return buf
     }
+
+    // ═══════════════════════════════════════════════
+    //  Ключи ADB
+    // ═══════════════════════════════════════════════
 
     private fun loadOrGenerateKeys(): KeyPair {
         val privFile = File(context.filesDir, PRIVATE_KEY_FILE)
@@ -287,7 +345,7 @@ class AdbClient(private val context: Context) {
             pubFile.writeBytes(kp.public.encoded)
             Log.i(TAG, "Generated and saved new ADB key pair")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to persist new ADB key pair — will need re-approval every run", e)
+            Log.e(TAG, "Failed to persist new ADB key pair", e)
         }
         return kp
     }

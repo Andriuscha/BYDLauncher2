@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0A0E18"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="20dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.1"
+            android:text="НАСТРОЙКИ"
+            android:textAllCaps="true"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/settingsClose"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_chip"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.1"
+            android:paddingHorizontal="20dp"
+            android:paddingVertical="10dp"
+            android:text="ЗАКРЫТЬ"
+            android:textAllCaps="true"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Заводские настройки BYD -->
+    <LinearLayout
+        android:id="@+id/btnFactorySettings"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp"
+        android:background="@drawable/bg_chip"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="18dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.08"
+            android:text="ЗАВОДСКИЕ НАСТРОЙКИ BYD"
+            android:textAllCaps="true"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:text="›"
+            android:textColor="#B0B4BD"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Заводская диагностика BYD (задел на будущее) -->
+    <LinearLayout
+        android:id="@+id/btnFactoryDiagnostics"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp"
+        android:background="@drawable/bg_chip"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="18dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.08"
+            android:text="ЗАВОДСКАЯ ДИАГНОСТИКА BYD"
+            android:textAllCaps="true"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:text="›"
+            android:textColor="#B0B4BD"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:fontFamily="monospace"
+        android:letterSpacing="0.08"
+        android:lineSpacingMultiplier="1.3"
+        android:text="Другие настройки лаунчера\n(пороги, split ratio, тема плашки)\nбудут добавлены позже."
+        android:textAllCaps="true"
+        android:textColor="#B0B4BD"
+        android:textSize="11sp" />
+    <!-- ==================== БЭКАП ==================== -->
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="16dp"
+        android:background="#20FFFFFF" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:fontFamily="monospace"
+        android:letterSpacing="0.1"
+        android:text="БЭКАП И ВОССТАНОВЛЕНИЕ"
+        android:textAllCaps="true"
+        android:textColor="#B0B4BD"
+        android:textSize="11sp" />
+
+    <Button
+        android:id="@+id/btnBackupExport"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:backgroundTint="#1F6FBF"
+        android:fontFamily="monospace"
+        android:letterSpacing="0.08"
+        android:text="СОЗДАТЬ БЭКАП"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp" />
+
+    <Button
+        android:id="@+id/btnBackupImport"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_marginTop="8dp"
+        android:backgroundTint="#7A4DFF"
+        android:fontFamily="monospace"
+        android:letterSpacing="0.08"
+        android:text="ВОССТАНОВИТЬ ИЗ БЭКАПА"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/tvBackupStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:fontFamily="monospace"
+        android:text=""
+        android:textColor="#B0B4BD"
+        android:textSize="11sp" />
+
+</LinearLayout>

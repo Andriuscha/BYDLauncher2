@@ -12,43 +12,41 @@
         android:src="@drawable/launcher_background"
         android:contentDescription="@null" />
 
-    <!-- Верхний отступ 60px — под оверлей-плашку с поездкой -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_marginTop="60px"
         android:orientation="vertical">
 
-        <!-- Split: слева погода + BMS, справа навигатор -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
             android:orientation="horizontal">
 
-            <!-- ============================================================ -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
             <!-- ЛЕВАЯ КОЛОНКА: погода + BMS                                  -->
-            <!-- ============================================================ -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="45"
                 android:background="@drawable/bg_frosted_card"
                 android:orientation="vertical"
-                android:padding="20dp">
+                android:padding="12dp">
 
-                <!-- ============ WEATHER CARD ============ -->
-                <!-- ============ WEATHER CARD ============ -->
+                <!-- WEATHER CARD (кликабельная — открывает расширенный прогноз) -->
                 <LinearLayout
                     android:id="@+id/weatherCard"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:paddingTop="4dp"
-                    android:paddingBottom="10dp">
+                    android:paddingTop="2dp"
+                    android:paddingBottom="6dp"
+                    android:clickable="true"
+                    android:focusable="true">
 
-                    <!-- ИКОНКА ПОГОДЫ -->
                     <ImageView
                         android:id="@+id/wIcon"
                         android:layout_width="72dp"
@@ -58,14 +56,12 @@
                         android:scaleType="fitCenter"
                         android:src="@drawable/ic_weather_placeholder" />
 
-                    <!-- ЦЕНТР -->
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:orientation="vertical">
 
-                        <!-- Локация -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -95,7 +91,6 @@
                                 android:text="Определение…" />
                         </LinearLayout>
 
-                        <!-- Температура + условие -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -130,7 +125,6 @@
                                 android:text="--" />
                         </LinearLayout>
 
-                        <!-- Днём / Ночью -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -191,14 +185,13 @@
                         </LinearLayout>
                     </LinearLayout>
 
-                    <!-- ЧИПЫ: Улица / Салон (Вариант Б — иконка справа от метки) -->
                     <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
                         android:layout_marginStart="-4dp">
 
-                        <!-- ============ УЛИЦА ============ -->
+                        <!-- УЛИЦА -->
                         <LinearLayout
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
@@ -211,7 +204,6 @@
                             android:layout_marginEnd="6dp"
                             android:minWidth="88dp">
 
-                            <!-- Метка + иконка справа -->
                             <LinearLayout
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
@@ -255,7 +247,7 @@
                                 android:text="--°" />
                         </LinearLayout>
 
-                        <!-- ============ САЛОН ============ -->
+                        <!-- САЛОН -->
                         <LinearLayout
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
@@ -309,40 +301,31 @@
                                 android:textColor="@color/c_amber"
                                 android:text="--°" />
                         </LinearLayout>
-
                     </LinearLayout>
                 </LinearLayout>
 
-                <!-- разделитель под виджетом -->
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
-                    android:layout_marginBottom="10dp"
+                    android:layout_marginBottom="6dp"
                     android:background="#40FFFFFF" />
 
-                <!-- ============ BMS: текстовый вывод ============ -->
                 <ScrollView
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
-                    android:layout_weight="1">
+                    android:layout_weight="1"
+                    android:scrollbars="none"
+                    android:fillViewport="true">
 
-                    <TextView
-                        android:id="@+id/contentText"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Загрузка…"
-                        android:textColor="#FFFFFF"
-                        android:textSize="14sp"
-                        android:lineSpacingExtra="3dp"
-                        android:fontFamily="monospace" />
+                    <include layout="@layout/bms_dashboard" />
 
                 </ScrollView>
 
             </LinearLayout>
 
-            <!-- ============================================================ -->
-            <!-- ПРАВАЯ КОЛОНКА: сюда прилетит Яндекс                          -->
-            <!-- ============================================================ -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- ПРАВАЯ КОЛОНКА: freeform-окно Яндекса                        -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
             <FrameLayout
                 android:id="@+id/navContainer"
                 android:layout_width="0dp"
@@ -365,9 +348,9 @@
 
         </LinearLayout>
 
-        <!-- ============================================================ -->
-        <!-- НИЖНИЙ БАР: 4 кнопки в стиле hi-tech glass dock (45% ширины) -->
-        <!-- ============================================================ -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- НИЖНИЙ БАР                                                    -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="64dp"
@@ -382,7 +365,7 @@
                 android:orientation="horizontal"
                 android:baselineAligned="false">
 
-                <!-- 1. Навигация -->
+                <!-- 1. Навигация (НЕ меняется) -->
                 <LinearLayout
                     android:id="@+id/btnNav"
                     style="@style/DockButton"
@@ -400,7 +383,7 @@
                         android:text="Навигация" />
                 </LinearLayout>
 
-                <!-- 2. Настройки -->
+                <!-- 2. Настройки → LauncherSettingsActivity -->
                 <LinearLayout
                     android:id="@+id/btnCar"
                     style="@style/DockButton"
@@ -418,7 +401,7 @@
                         android:text="Настройки" />
                 </LinearLayout>
 
-                <!-- 3. Климат -->
+                <!-- 3. Комфорт → ComfortActivity -->
                 <LinearLayout
                     android:id="@+id/btnClimate"
                     style="@style/DockButton"
@@ -433,10 +416,10 @@
                     <TextView
                         android:id="@+id/labelClimate"
                         style="@style/DockLabel"
-                        android:text="Климат" />
+                        android:text="Комфорт" />
                 </LinearLayout>
 
-                <!-- 4. Поездки -->
+                <!-- 4. Tech → TechActivity -->
                 <LinearLayout
                     android:id="@+id/btnTrip"
                     style="@style/DockButton"
@@ -451,12 +434,11 @@
                     <TextView
                         android:id="@+id/labelTrip"
                         style="@style/DockLabel"
-                        android:text="Поездки" />
+                        android:text="Tech" />
                 </LinearLayout>
 
             </LinearLayout>
 
-            <!-- Правая половина — там freeform-окно Яндекса, бар не нужен -->
             <View
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
