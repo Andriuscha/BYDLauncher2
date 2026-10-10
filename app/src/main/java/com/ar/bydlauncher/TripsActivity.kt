@@ -33,6 +33,7 @@ class TripsActivity : Activity() {
         // Собираем layout программно — не плодим xml ради одного экрана.
         val root = FrameLayout(this).apply {
             setBackgroundColor(0xFF0D1B2A.toInt())
+            fitsSystemWindows = true
         }
 
         val header = LinearLayout(this).apply {

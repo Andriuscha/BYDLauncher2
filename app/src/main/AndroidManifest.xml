@@ -16,7 +16,7 @@
         android:label="BYD Launcher"
         android:allowBackup="true"
         android:usesCleartextTraffic="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/Theme.BYDLauncher">
 
         <!-- ═══ Главный лаунчер ═══ -->
         <activity
@@ -46,7 +46,7 @@
             android:name=".BatteryDetailsActivity"
             android:exported="false"
             android:screenOrientation="sensorLandscape"
-            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+            android:theme="@style/Theme.BYDLauncher.Fullscreen" />
 
         <!-- ═══ История поездок ═══ -->
         <activity
@@ -54,42 +54,48 @@
             android:exported="false"
             android:launchMode="singleTop"
             android:stateNotNeeded="true"
-            android:screenOrientation="sensorLandscape" />
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.BYDLauncher.Fullscreen" />
 
         <!-- ═══ Детали погоды ═══ -->
         <activity
             android:name=".WeatherDetailsActivity"
             android:exported="false"
             android:launchMode="singleTop"
-            android:screenOrientation="sensorLandscape" />
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.BYDLauncher.Fullscreen" />
 
         <!-- ═══ История зарядок ═══ -->
         <activity
             android:name=".ChargingHistoryActivity"
             android:exported="false"
             android:launchMode="singleTop"
-            android:screenOrientation="sensorLandscape" />
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.BYDLauncher.Fullscreen" />
 
         <!-- ═══ Настройки лаунчера ═══ -->
         <activity
             android:name=".LauncherSettingsActivity"
             android:exported="false"
             android:launchMode="singleTop"
-            android:screenOrientation="sensorLandscape" />
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.BYDLauncher.Fullscreen" />
 
         <!-- ═══ Комфорт ═══ -->
         <activity
             android:name=".ComfortActivity"
             android:exported="false"
             android:launchMode="singleTop"
-            android:screenOrientation="sensorLandscape" />
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.BYDLauncher.Fullscreen" />
 
         <!-- ═══ Tech: тестер FID ═══ -->
         <activity
             android:name=".TechActivity"
             android:exported="false"
             android:launchMode="singleTop"
-            android:screenOrientation="sensorLandscape" />
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.BYDLauncher.Fullscreen" />
 
         <!-- ═══ Anchor-service ═══ -->
         <service

@@ -12,17 +12,14 @@ import java.io.File
  * Реальная ёмкость = добавленная энергия / ΔSOC × 100
  *
  * Энергия считается интегрированием мощности |U_hv × I_hv| по времени, пока
- * bmsState == BMS_CHARGING. Счётчик STATISTIC_TOTAL_ELEC_CONSUMPTION для этого
- * не годится: он копит расход при движении и при зарядке почти не растёт.
+ * bmsState == BMS_CHARGING.
  *
- * Отличия от первой версии:
- *  - SOC хранится как Double (раньше усекался до Int → до ~10% ошибки при ΔSOC=20);
- *  - незавершённая сессия сохраняется на диск и переживает перезапуск процесса;
- *  - конец зарядки с задержкой END_DEBOUNCE_MS (BMS-state иногда мигает);
- *  - пропуски в данных (ADB отвалился, V/I = null) учитываются, и сессия с
- *    большими пропусками отбраковывается — иначе энергия занижена, а SOH тоже;
- *  - запись файла атомарная (tmp + rename): питание в машине может пропасть
- *    в любой момент.
+ * Автоопределение AC/DC:
+ *   если пиковая мощность за сессию > AC_DC_THRESHOLD_KW — DC, иначе AC.
+ *
+ * Если машину выключили во время зарядки и включили через какое-то время,
+ * сессия восстанавливается из файла, и «дозаряд» после выключения оценивается
+ * по приросту SOC с использованием номинала батареи.
  */
 class SohCalculator(
     private val storageFile: File,
@@ -31,7 +28,7 @@ class SohCalculator(
     companion object {
         private const val TAG = "SohCalculator"
 
-        const val FORMAT_VERSION = 2
+        const val FORMAT_VERSION = 3
 
         const val MIN_DELTA_SOC = 20.0
         const val MIN_KWH_ADDED = 0.5
@@ -42,19 +39,43 @@ class SohCalculator(
         const val MAX_MEASUREMENTS = 20
         const val BMS_CHARGING = 1
 
-        /** Интервал между снапшотами длиннее этого считается пропуском. */
         const val MAX_SAMPLE_GAP_MS = 10_000L
-        /** Если пропуски > 5% длительности зарядки — замер ненадёжен. */
         const val MAX_GAP_FRACTION = 0.05
-        /** Сколько секунд bmsState должен быть «не зарядка», чтобы закрыть сессию. */
         const val END_DEBOUNCE_MS = 30_000L
-        /** Как часто сбрасывать активную сессию на диск. */
         const val SAVE_INTERVAL_MS = 60_000L
-        /** Сессия старше этого при загрузке закрывается сразу, а не продолжается. */
         const val RESUME_WINDOW_MS = 10 * 60_000L
-        /** Всё, что выше, считаем мусором из HAL (Dolphin на DC максимум ~90 кВт). */
         const val MAX_PLAUSIBLE_KW = 150.0
+
+        /** Порог пиковой мощности: > 9 кВт → DC, ≤ 9 кВт → AC. */
+        const val AC_DC_THRESHOLD_KW = 9.0
+
+        interface ChargingListener {
+            /**
+             * Вызывается при завершении зарядной сессии.
+             * @param acDc "AC" / "DC" — автоопределение по пиковой мощности
+             */
+            fun onChargingFinished(
+                startTs: Long,
+                endTs: Long,
+                socStart: Double,
+                socEnd: Double,
+                energyKwh: Double,
+                bmsStart: Double?,
+                bmsEnd: Double?,
+                cellTempStart: Double?,
+                cellTempEnd: Double?,
+                tempOutsideStart: Double?,
+                tempOutsideEnd: Double?,
+                odometerKm: Double?,
+                acDc: String?,
+                accepted: Boolean,
+                rejectReason: String?
+            )
+        }
     }
+
+    /** Слушатель, устанавливается извне (например, из MainActivity). */
+    var listener: ChargingListener? = null
 
     data class Measurement(
         val ts: Long,
@@ -84,22 +105,38 @@ class SohCalculator(
         val startTs: Long,
         val socStart: Double,
         var lastSoc: Double,
-        /** Время последнего снапшота В СОСТОЯНИИ ЗАРЯДКИ. */
         var lastTs: Long,
         var lastPowerKw: Double?,
         var energyKwh: Double = 0.0,
         var gapMs: Long = 0L,
         var minTempC: Int?,
         var maxTempC: Int?,
-        /** 0 — зарядка идёт; иначе момент, когда bmsState перестал быть «зарядка». */
         var notChargingSince: Long = 0L,
-        var lastSavedTs: Long = 0L
+        var lastSavedTs: Long = 0L,
+        /** true — сессия восстановлена из файла после выключения машины. */
+        var resumed: Boolean = false,
+
+        // ── Данные для истории зарядок ──
+        var bmsCounterStart: Double? = null,
+        var bmsCounterEnd: Double? = null,
+        var cellTempStart: Double? = null,
+        var cellTempEnd: Double? = null,
+        var tempOutsideStart: Double? = null,
+        var tempOutsideEnd: Double? = null,
+        var odometerKm: Double? = null,
+
+        // ── Пиковая мощность для авто-AC/DC ──
+        var peakPowerKw: Double = 0.0
     ) {
         fun averageTemp(): Int? {
             val lo = minTempC ?: return maxTempC
             val hi = maxTempC ?: return minTempC
             return (lo + hi) / 2
         }
+
+        /** AC / DC по пиковой мощности. */
+        fun acDc(): String =
+            if (peakPowerKw > AC_DC_THRESHOLD_KW) "DC" else "AC"
 
         fun toJson(): JSONObject = JSONObject().apply {
             put("startTs", startTs)
@@ -111,6 +148,14 @@ class SohCalculator(
             put("gapMs", gapMs)
             put("minTempC", minTempC ?: JSONObject.NULL)
             put("maxTempC", maxTempC ?: JSONObject.NULL)
+            put("bmsCounterStart", bmsCounterStart ?: JSONObject.NULL)
+            put("bmsCounterEnd", bmsCounterEnd ?: JSONObject.NULL)
+            put("cellTempStart", cellTempStart ?: JSONObject.NULL)
+            put("cellTempEnd", cellTempEnd ?: JSONObject.NULL)
+            put("tempOutsideStart", tempOutsideStart ?: JSONObject.NULL)
+            put("tempOutsideEnd", tempOutsideEnd ?: JSONObject.NULL)
+            put("odometerKm", odometerKm ?: JSONObject.NULL)
+            put("peakPowerKw", peakPowerKw)
         }
     }
 
@@ -150,23 +195,55 @@ class SohCalculator(
                 lastPowerKw = powerKw,
                 minTempC = tempC,
                 maxTempC = tempC,
-                lastSavedTs = ts
+                lastSavedTs = ts,
+                bmsCounterStart = snap.lifetimeKwh?.toDouble(),
+                cellTempStart = averageCellTemp(snap),
+                tempOutsideStart = snap.tempOutsideC?.toDouble(),
+                odometerKm = snap.lifetimeKm?.toDouble(),
+                peakPowerKw = powerKw ?: 0.0
             )
             save()
-            Log.i(TAG, "→ Charge started: soc=%.1f, temp=%s, power=%s kW"
-                .format(soc, tempC, powerKw?.let { "%.1f".format(it) } ?: "—"))
+            Log.i(TAG, "→ Charge started: soc=%.1f, temp=%s, power=%s kW, bms=%s, odo=%s"
+                .format(
+                    soc, tempC,
+                    powerKw?.let { "%.1f".format(it) } ?: "—",
+                    snap.lifetimeKwh?.let { "%.1f".format(it) } ?: "—",
+                    snap.lifetimeKm?.let { "%.1f".format(it) } ?: "—"
+                ))
             return
         }
 
         // ── Идёт зарядка ─────────────────────────────────
         if (isCharging) {
             s.notChargingSince = 0L
+
+            // Первый снапшот после восстановления сессии
+            if (s.resumed) {
+                s.resumed = false
+                if (soc != null && soc > s.lastSoc) {
+                    val missingSoc = soc - s.lastSoc
+                    val missingKwh = nominalKwh * missingSoc / 100.0
+                    s.energyKwh += missingKwh
+                    s.gapMs = 0L
+                    Log.i(TAG,
+                        "Resume (charging): дозаряд %.1f%% (%.2f кВт·ч), энергия → %.2f кВт·ч"
+                            .format(missingSoc, missingKwh, s.energyKwh))
+                }
+            }
+
             accumulate(s, ts, powerKw)
             if (soc != null) s.lastSoc = soc
             if (tempC != null) {
                 s.minTempC = minOf(s.minTempC ?: tempC, tempC)
                 s.maxTempC = maxOf(s.maxTempC ?: tempC, tempC)
             }
+
+            // Обновляем конечные значения
+            s.bmsCounterEnd = snap.lifetimeKwh?.toDouble()
+            s.cellTempEnd = averageCellTemp(snap)
+            s.tempOutsideEnd = snap.tempOutsideC?.toDouble()
+            if (snap.lifetimeKm != null) s.odometerKm = snap.lifetimeKm.toDouble()
+
             if (ts - s.lastSavedTs >= SAVE_INTERVAL_MS) {
                 s.lastSavedTs = ts
                 save()
@@ -177,10 +254,25 @@ class SohCalculator(
         // ── Не зарядка, но сессия открыта: ждём END_DEBOUNCE_MS ──
         if (s.notChargingSince == 0L) {
             s.notChargingSince = ts
+
+            // Первый снапшот после восстановления — зарядка уже закончилась
+            if (s.resumed) {
+                s.resumed = false
+                if (soc != null && soc > s.lastSoc) {
+                    val missingSoc = soc - s.lastSoc
+                    val missingKwh = nominalKwh * missingSoc / 100.0
+                    s.energyKwh += missingKwh
+                    s.lastSoc = soc
+                    s.gapMs = 0L
+                    Log.i(TAG,
+                        "Resume (не зарядка): дозаряд %.1f%% (%.2f кВт·ч), энергия → %.2f кВт·ч, lastSoc=%.1f"
+                            .format(missingSoc, missingKwh, s.energyKwh, soc))
+                }
+            }
             return
         }
         if (ts - s.notChargingSince >= END_DEBOUNCE_MS) {
-            closeSession(s)
+            closeSession(s, wasResumed = s.resumed)
         }
     }
 
@@ -192,11 +284,17 @@ class SohCalculator(
         return if (kw <= MAX_PLAUSIBLE_KW) kw else null
     }
 
+    /** Средняя температура по ячейкам (между max и min). */
+    private fun averageCellTemp(snap: BatterySnapshot): Double? {
+        val max = snap.maxBatTempC ?: return null
+        val min = snap.minBatTempC ?: return max.toDouble()
+        return (max + min) / 2.0
+    }
+
     /** Трапецеидальное интегрирование мощности между двумя снапшотами зарядки. */
     private fun accumulate(s: ActiveSession, ts: Long, powerKw: Double?) {
         val dt = ts - s.lastTs
         if (dt > MAX_SAMPLE_GAP_MS) {
-            // Большая дыра (в том числе перезапуск процесса / мигание BMS-state)
             s.gapMs += dt
         } else if (dt > 0) {
             val prev = s.lastPowerKw
@@ -212,14 +310,21 @@ class SohCalculator(
         }
         s.lastTs = ts
         s.lastPowerKw = powerKw
+
+        // Обновляем пиковую мощность для авто-AC/DC
+        if (powerKw != null && powerKw > s.peakPowerKw) {
+            s.peakPowerKw = powerKw
+        }
     }
 
     // ══════════════════════════════════════════════════════
     // Завершение сессии
     // ══════════════════════════════════════════════════════
 
-    private fun closeSession(s: ActiveSession) {
+    private fun closeSession(s: ActiveSession, wasResumed: Boolean = false) {
         val durationMs = (s.lastTs - s.startTs).coerceAtLeast(0L)
+
+        val effectiveGapMs = if (wasResumed) 0L else s.gapMs
 
         val m = finalize(
             startTs = s.startTs,
@@ -227,7 +332,7 @@ class SohCalculator(
             socEnd = s.lastSoc,
             kwhAdded = s.energyKwh,
             durationMs = durationMs,
-            gapMs = s.gapMs,
+            gapMs = effectiveGapMs,
             batTempC = s.averageTemp()
         )
 
@@ -237,13 +342,34 @@ class SohCalculator(
         save()
 
         val avgKw = if (durationMs > 0) s.energyKwh / (durationMs / 3_600_000.0) else 0.0
+        val acDc = s.acDc()
+
         if (m.rejected) {
-            Log.w(TAG, "✗ Session rejected: ${m.rejectReason}")
+            Log.w(TAG, "✗ Session rejected (resumed=$wasResumed, acDc=$acDc, peak=${"%.1f".format(s.peakPowerKw)} kW): ${m.rejectReason}")
         } else {
-            Log.i(TAG, "✓ Session complete: soc=%.1f→%.1f%%, kwh=%.2f (avg %.1f kW, %d min), usable=%.2f kWh, SOH=%.1f%%"
+            Log.i(TAG, "✓ Session complete (resumed=$wasResumed, acDc=$acDc, peak=${"%.1f".format(s.peakPowerKw)} kW): soc=%.1f→%.1f%%, kwh=%.2f (avg %.1f kW, %d min), usable=%.2f kWh, SOH=%.1f%%"
                 .format(m.socStart, m.socEnd, m.kwhAdded, avgKw,
                     durationMs / 60_000, m.usableCapacityKwh, m.sohPercent))
         }
+
+        // ── Уведомляем слушателя (ChargingRepository) ──
+        listener?.onChargingFinished(
+            startTs = s.startTs,
+            endTs = s.lastTs,
+            socStart = s.socStart,
+            socEnd = s.lastSoc,
+            energyKwh = s.energyKwh,
+            bmsStart = s.bmsCounterStart,
+            bmsEnd = s.bmsCounterEnd,
+            cellTempStart = s.cellTempStart,
+            cellTempEnd = s.cellTempEnd,
+            tempOutsideStart = s.tempOutsideStart,
+            tempOutsideEnd = s.tempOutsideEnd,
+            odometerKm = s.odometerKm,
+            acDc = acDc,
+            accepted = !m.rejected,
+            rejectReason = m.rejectReason
+        )
     }
 
     private fun finalize(
@@ -331,8 +457,6 @@ class SohCalculator(
         save()
     }
 
-    /** Обновить номинал ёмкости. Переименовано из setNominalKwh,
-     *  чтобы не конфликтовать с автогенерируемым сеттером поля var nominalKwh. */
     @Synchronized
     fun updateNominalKwh(v: Double) {
         if (v > 0) {
@@ -355,7 +479,6 @@ class SohCalculator(
                 })
                 session?.let { put("session", it.toJson()) }
             }
-            // Атомарная запись: при потере питания остаётся либо старый, либо новый файл.
             val tmp = File(storageFile.parentFile, storageFile.name + ".tmp")
             tmp.writeText(root.toString(2))
             if (!tmp.renameTo(storageFile)) {
@@ -373,10 +496,12 @@ class SohCalculator(
             val root = JSONObject(storageFile.readText())
             nominalKwh = root.optDouble("nominalKwh", nominalKwh)
 
-            // v1 считал энергию по счётчику расхода — эти замеры несопоставимы с новыми.
             if (root.optInt("version", 1) < FORMAT_VERSION) {
                 try {
-                    storageFile.copyTo(File(storageFile.parentFile, storageFile.name + ".v1.bak"), overwrite = true)
+                    storageFile.copyTo(
+                        File(storageFile.parentFile, storageFile.name + ".v1.bak"),
+                        overwrite = true
+                    )
                 } catch (e: Exception) {
                     Log.w(TAG, "v1 backup failed", e)
                 }
@@ -406,28 +531,38 @@ class SohCalculator(
 
             val so = root.optJSONObject("session")
             if (so != null) {
+                fun getDoubleOrNull(key: String): Double? =
+                    if (so.isNull(key)) null else so.optDouble(key, Double.NaN).takeIf { !it.isNaN() }
+
                 val restored = ActiveSession(
                     startTs = so.getLong("startTs"),
                     socStart = so.getDouble("socStart"),
                     lastSoc = so.getDouble("lastSoc"),
                     lastTs = so.getLong("lastTs"),
-                    lastPowerKw = if (so.isNull("lastPowerKw")) null else so.getDouble("lastPowerKw"),
+                    lastPowerKw = getDoubleOrNull("lastPowerKw"),
                     energyKwh = so.getDouble("energyKwh"),
                     gapMs = so.getLong("gapMs"),
                     minTempC = if (so.isNull("minTempC")) null else so.getInt("minTempC"),
                     maxTempC = if (so.isNull("maxTempC")) null else so.getInt("maxTempC"),
-                    lastSavedTs = System.currentTimeMillis()
+                    lastSavedTs = System.currentTimeMillis(),
+                    resumed = true,
+                    bmsCounterStart = getDoubleOrNull("bmsCounterStart"),
+                    bmsCounterEnd = getDoubleOrNull("bmsCounterEnd"),
+                    cellTempStart = getDoubleOrNull("cellTempStart"),
+                    cellTempEnd = getDoubleOrNull("cellTempEnd"),
+                    tempOutsideStart = getDoubleOrNull("tempOutsideStart"),
+                    tempOutsideEnd = getDoubleOrNull("tempOutsideEnd"),
+                    odometerKm = getDoubleOrNull("odometerKm"),
+                    peakPowerKw = so.optDouble("peakPowerKw", 0.0)
                 )
-                // Сессия давно оборвалась — закрываем её как есть (энергия и ΔSOC
-                // согласованы по lastTs), а не клеим к новой зарядке через дыру.
-                if (System.currentTimeMillis() - restored.lastTs > RESUME_WINDOW_MS) {
-                    Log.i(TAG, "Найдена старая незакрытая сессия — закрываю")
-                    closeSession(restored)
-                } else {
-                    session = restored
-                    Log.i(TAG, "Сессия зарядки восстановлена: %.1f→%.1f%%, %.2f kWh"
-                        .format(restored.socStart, restored.lastSoc, restored.energyKwh))
-                }
+
+                val elapsed = System.currentTimeMillis() - restored.lastTs
+
+                session = restored
+
+                Log.i(TAG,
+                    "Сессия восстановлена (resumed): socStart=%.1f, lastSoc=%.1f, kwh=%.2f, простой %d мин"
+                        .format(restored.socStart, restored.lastSoc, restored.energyKwh, elapsed / 60_000))
             }
             Log.i(TAG, "Loaded ${measurements.size} measurements, nominal=$nominalKwh")
         } catch (e: Exception) {

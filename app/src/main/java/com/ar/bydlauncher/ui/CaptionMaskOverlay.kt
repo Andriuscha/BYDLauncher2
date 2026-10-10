@@ -1,10 +1,10 @@
 package com.ar.bydlauncher.ui
 
 import android.content.Context
+import android.graphics.Point
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.provider.Settings
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -42,15 +42,24 @@ class CaptionMaskOverlay(private val context: Context) {
     }
 
     fun show(top: Int, captionHeightPx: Int = 56, text: String = "Поездка не начата") {
-        Log.i(TAG, "show: top=$top h=$captionHeightPx text='$text' isShown=$isShown")
+        val (screenWidth, _) = getRealScreenSize()
+        val sbHeight = getStatusBarHeight()
+        val sbVisible = isStatusBarVisible()
+        val effectiveY = if (sbVisible) top + sbHeight else top
+
+        Log.i(TAG, "show: top=$top h=$captionHeightPx sbVisible=$sbVisible sb=$sbHeight y=$effectiveY isShown=$isShown")
 
         if (isShown && maskView != null) {
             updateStatus(text)
             (maskView?.layoutParams as? WindowManager.LayoutParams)?.let { lp ->
-                if (lp.y != top || lp.height != captionHeightPx) {
-                    lp.y = top
-                    lp.height = captionHeightPx
-                    try { wm.updateViewLayout(maskView, lp) } catch (e: Exception) {
+                var changed = false
+                if (lp.width != screenWidth)      { lp.width  = screenWidth;     changed = true }
+                if (lp.height != captionHeightPx) { lp.height = captionHeightPx; changed = true }
+                if (lp.y != effectiveY)           { lp.y      = effectiveY;      changed = true }
+                if (changed) {
+                    try {
+                        wm.updateViewLayout(maskView, lp)
+                    } catch (e: Exception) {
                         Log.e(TAG, "updateViewLayout FAILED", e)
                     }
                 }
@@ -58,19 +67,19 @@ class CaptionMaskOverlay(private val context: Context) {
             return
         }
 
-        val screenWidth = context.resources.displayMetrics.widthPixels
-
         val params = WindowManager.LayoutParams(
             screenWidth,
             captionHeightPx,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = 0
-            y = top
+            y = effectiveY
         }
 
         val root = buildRoot()
@@ -79,7 +88,7 @@ class CaptionMaskOverlay(private val context: Context) {
             maskView = root
             isShown = true
             updateStatus(text)
-            Log.i(TAG, "addView SUCCESS")
+            Log.i(TAG, "addView SUCCESS  width=$screenWidth  h=$captionHeightPx  y=$effectiveY")
         } catch (e: Exception) {
             Log.e(TAG, "addView FAILED: ${e.javaClass.name}: ${e.message}", e)
             maskView = null
@@ -107,7 +116,7 @@ class CaptionMaskOverlay(private val context: Context) {
         }
         container.addView(icon)
 
-        // ── 2. Заголовок "В ПОЕЗДКЕ" / "НЕ НАЧАТА" ──
+        // ── 2. Заголовок ──
         tvTitle = TextView(context).apply {
             typeface = Typeface.MONOSPACE
             setTextColor(TEXT_SECONDARY)
@@ -127,8 +136,7 @@ class CaptionMaskOverlay(private val context: Context) {
 
         container.addView(makeDivider())
 
-        // ── 3. Четыре колонки с данными, всё в одну строку ──
-
+        // ── 3. Четыре колонки ──
         val (colDist, vDist) = makeStatColumn("ПРОБЕГ", "—", ACCENT_DISTANCE)
         tvDistance = vDist
         container.addView(colDist)
@@ -154,28 +162,19 @@ class CaptionMaskOverlay(private val context: Context) {
         val wrapperParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
-        ).apply {
-            marginStart = dp(6)
-            marginEnd = dp(6)
-            topMargin = dp(4)
-            bottomMargin = dp(4)
-        }
+        )
 
         root.addView(container, wrapperParams)
         return root
     }
 
-    /**
-     * Колонка со всем в ОДНУ строку: подпись слева, значение справа.
-     * layout_weight = 1 — колонки равномерно распределяются по ширине.
-     */
     private fun makeStatColumn(
         label: String,
         value: String,
         accent: Int
     ): Pair<LinearLayout, TextView> {
         val col = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL           // ← ГОРИЗОНТАЛЬНО!
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 0,
@@ -185,7 +184,6 @@ class CaptionMaskOverlay(private val context: Context) {
             setPadding(dp(12), 0, dp(12), 0)
         }
 
-        // подпись (мелкая, слева)
         val tvLabel = TextView(context).apply {
             typeface = Typeface.MONOSPACE
             setTextColor(TEXT_TERTIARY)
@@ -196,7 +194,6 @@ class CaptionMaskOverlay(private val context: Context) {
             includeFontPadding = false
         }
 
-        // значение (крупное, справа)
         val tvValue = TextView(context).apply {
             typeface = Typeface.MONOSPACE
             setTextColor(accent)
@@ -256,7 +253,9 @@ class CaptionMaskOverlay(private val context: Context) {
 
     fun hide() {
         maskView?.let {
-            try { wm.removeView(it) } catch (e: Exception) {
+            try {
+                wm.removeView(it)
+            } catch (e: Exception) {
                 Log.e(TAG, "removeView FAILED", e)
             }
         }
@@ -267,6 +266,58 @@ class CaptionMaskOverlay(private val context: Context) {
         tvDuration = null
         tvTitle = null
         isShown = false
+    }
+
+    // ==================================================
+    // Размеры экрана / системные бары
+    // ==================================================
+
+    private fun getRealScreenSize(): Pair<Int, Int> {
+        return try {
+            val display = wm.defaultDisplay
+            val size = Point()
+            @Suppress("DEPRECATION")
+            display.getRealSize(size)
+            size.x to size.y
+        } catch (e: Exception) {
+            Log.e(TAG, "getRealScreenSize failed", e)
+            val dm = context.resources.displayMetrics
+            dm.widthPixels to dm.heightPixels
+        }
+    }
+
+    private fun getStatusBarHeight(): Int {
+        val resId = context.resources.getIdentifier(
+            "status_bar_height", "dimen", "android"
+        )
+        if (resId > 0) {
+            val h = context.resources.getDimensionPixelSize(resId)
+            if (h > 0) return h
+        }
+        return dp(24)
+    }
+
+    /**
+     * Определяет, виден ли status bar в данный момент.
+     * Сравнивает реальную высоту экрана с высотой области приложения.
+     * Разница > 0 → системные бары видны (immersive не активен).
+     */
+    private fun isStatusBarVisible(): Boolean {
+        return try {
+            val display = wm.defaultDisplay
+            val realSize = Point()
+            @Suppress("DEPRECATION")
+            display.getRealSize(realSize)
+
+            val appHeight = context.resources.displayMetrics.heightPixels
+            val diff = realSize.y - appHeight
+
+            Log.d(TAG, "isStatusBarVisible: realH=${realSize.y} appH=$appHeight diff=$diff")
+            diff > 0
+        } catch (e: Exception) {
+            Log.e(TAG, "isStatusBarVisible failed", e)
+            true
+        }
     }
 
     private fun dp(v: Int): Int = TypedValue.applyDimension(

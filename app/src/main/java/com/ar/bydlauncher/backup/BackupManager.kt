@@ -41,9 +41,8 @@ class BackupManager(private val context: Context) {
     //  ПУТИ
     // ==================================================
 
-    /** Папка для бэкапов. Сначала пробуем публичный Downloads, fallback — приватный. */
+    /** Папка для бэкапов. Приватная — не требует разрешений. */
     private fun getBackupDir(): File {
-        // Приватная папка приложения — доступна всегда, не требует разрешений
         val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?: context.filesDir
         if (!dir.exists()) dir.mkdirs()
@@ -67,7 +66,6 @@ class BackupManager(private val context: Context) {
             file.writeText(json.toString(2))
             Log.i(TAG, "Backup exported: ${file.absolutePath} (${file.length()} bytes)")
 
-            // Запоминаем время последнего бэкапа
             saveLastBackupTs(System.currentTimeMillis())
 
             file
@@ -92,13 +90,17 @@ class BackupManager(private val context: Context) {
         root.put("trips", trips)
         root.put("tripsCount", trips.length())
 
-        // ── 2. SOH file ──
+        // ── 2. Chargings ──
+        val chargings = collectChargings()
+        root.put("chargings", chargings)
+        root.put("chargingsCount", chargings.length())
+
+        // ── 3. SOH file ──
         val sohFile = File(context.filesDir, "soh_data.json")
         if (sohFile.exists()) {
             try {
                 val sohJson = JSONObject(sohFile.readText())
                 root.put("soh", sohJson)
-                // Считаем замеры для metadata
                 val measurements = sohJson.optJSONArray("measurements")
                 root.put("sohMeasurementsCount", measurements?.length() ?: 0)
             } catch (e: Exception) {
@@ -111,10 +113,9 @@ class BackupManager(private val context: Context) {
             root.put("sohMeasurementsCount", 0)
         }
 
-        // ── 3. SharedPreferences ──
+        // ── 4. SharedPreferences ──
         val calibration = prefsToJson(PREFS_CALIBRATION)
         root.put("prefsCalibration", calibration)
-        // Считаем samples для metadata
         val samplesStr = calibration.optString("samples", "")
         val samplesCount = try {
             if (samplesStr.isNotEmpty()) JSONArray(samplesStr).length() else 0
@@ -158,6 +159,38 @@ class BackupManager(private val context: Context) {
         return arr
     }
 
+    private fun collectChargings(): JSONArray {
+        val arr = JSONArray()
+        val db = TripDatabase(context.applicationContext)
+        try {
+            db.readableDatabase.query(
+                TripDatabase.TABLE_CHARGING,
+                null, null, null, null, null,
+                "${TripDatabase.CH_STARTED_AT} ASC"
+            ).use { c ->
+                while (c.moveToNext()) {
+                    val o = JSONObject()
+                    for (i in 0 until c.columnCount) {
+                        val name = c.getColumnName(i)
+                        val v: Any? = when (c.getType(i)) {
+                            android.database.Cursor.FIELD_TYPE_NULL -> null
+                            android.database.Cursor.FIELD_TYPE_INTEGER -> c.getLong(i)
+                            android.database.Cursor.FIELD_TYPE_FLOAT -> c.getDouble(i)
+                            else -> c.getString(i)
+                        }
+                        o.put(name, v ?: JSONObject.NULL)
+                    }
+                    arr.put(o)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "collectChargings failed", e)
+        } finally {
+            db.close()
+        }
+        return arr
+    }
+
     private fun prefsToJson(name: String): JSONObject {
         val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
         val o = JSONObject()
@@ -182,16 +215,14 @@ class BackupManager(private val context: Context) {
     } catch (_: Exception) { "?" }
 
     // ==================================================
-    //  ИМПОРТ
+    //  МЕТАДАННЫЕ
     // ==================================================
 
-    /**
-     * Метаданные бэкапа — для диалога подтверждения.
-     */
     data class BackupMeta(
         val file: File,
         val createdAt: Long,
         val tripsCount: Int,
+        val chargingsCount: Int,
         val sohMeasurementsCount: Int,
         val calibrationSamplesCount: Int,
         val appVersion: String
@@ -201,9 +232,6 @@ class BackupManager(private val context: Context) {
                 .format(Date(createdAt))
     }
 
-    /**
-     * Читает метаданные бэкапа без импорта.
-     */
     suspend fun readMeta(file: File): BackupMeta? = withContext(Dispatchers.IO) {
         try {
             if (!file.exists()) return@withContext null
@@ -212,6 +240,7 @@ class BackupManager(private val context: Context) {
                 file = file,
                 createdAt = root.optLong("createdAt", file.lastModified()),
                 tripsCount = root.optInt("tripsCount", root.optJSONArray("trips")?.length() ?: 0),
+                chargingsCount = root.optInt("chargingsCount", root.optJSONArray("chargings")?.length() ?: 0),
                 sohMeasurementsCount = root.optInt("sohMeasurementsCount", 0),
                 calibrationSamplesCount = root.optInt("calibrationSamplesCount", 0),
                 appVersion = root.optString("appVersion", "?")
@@ -222,11 +251,9 @@ class BackupManager(private val context: Context) {
         }
     }
 
-    /**
-     * Текущие счётчики — для диалога «до/после».
-     */
     data class CurrentCounters(
         val tripsCount: Int,
+        val chargingsCount: Int,
         val sohMeasurementsCount: Int,
         val calibrationSamplesCount: Int
     )
@@ -236,6 +263,17 @@ class BackupManager(private val context: Context) {
             val db = TripDatabase(context.applicationContext)
             val c = db.readableDatabase.rawQuery(
                 "SELECT COUNT(*) FROM ${TripDatabase.TABLE}", null
+            )
+            val n = if (c.moveToFirst()) c.getInt(0) else 0
+            c.close()
+            db.close()
+            n
+        } catch (_: Exception) { 0 }
+
+        val chargingsCount = try {
+            val db = TripDatabase(context.applicationContext)
+            val c = db.readableDatabase.rawQuery(
+                "SELECT COUNT(*) FROM ${TripDatabase.TABLE_CHARGING}", null
             )
             val n = if (c.moveToFirst()) c.getInt(0) else 0
             c.close()
@@ -257,11 +295,16 @@ class BackupManager(private val context: Context) {
             if (s.isNullOrEmpty()) 0 else JSONArray(s).length()
         } catch (_: Exception) { 0 }
 
-        CurrentCounters(tripsCount, sohCount, calCount)
+        CurrentCounters(tripsCount, chargingsCount, sohCount, calCount)
     }
+
+    // ==================================================
+    //  ИМПОРТ
+    // ==================================================
 
     /**
      * Восстанавливает данные из бэкапа.
+     * Перед заменой сохраняет текущее состояние в rollback.
      */
     suspend fun importFromFile(file: File): BackupResult = withContext(Dispatchers.IO) {
         try {
@@ -277,23 +320,26 @@ class BackupManager(private val context: Context) {
                 )
             }
 
-            // ── Сохраняем текущее состояние в rollback (в Download/) ──
+            // ── Сохраняем текущее состояние в rollback ──
             val rollbackFile = createRollbackBackup()
             Log.i(TAG, "Rollback created: ${rollbackFile?.absolutePath}")
 
             // ── Применяем ──
             val tripsCount = applyTrips(root.optJSONArray("trips"))
+            val chargingsCount = applyChargings(root.optJSONArray("chargings"))
             val sohCount = applySoh(root.optJSONObject("soh"))
             val calCount = applyPrefs(PREFS_CALIBRATION, root.optJSONObject("prefsCalibration"))
             applyPrefs(PREFS_FULL_CHARGE, root.optJSONObject("prefsFullCharge"))
 
             Log.i(
                 TAG,
-                "Backup imported: trips=$tripsCount, soh=$sohCount, calibration=$calCount"
+                "Backup imported: trips=$tripsCount, chargings=$chargingsCount, " +
+                        "soh=$sohCount, calibration=$calCount"
             )
 
             BackupResult.Success(
                 tripsCount = tripsCount,
+                chargingsCount = chargingsCount,
                 sohMeasurementsCount = sohCount,
                 calibrationSamplesCount = calCount,
                 rollbackPath = rollbackFile?.absolutePath
@@ -360,6 +406,45 @@ class BackupManager(private val context: Context) {
         return count
     }
 
+    private fun applyChargings(arr: JSONArray?): Int {
+        if (arr == null) return 0
+        val db = TripDatabase(context.applicationContext)
+        var count = 0
+        try {
+            val writable = db.writableDatabase
+            writable.beginTransaction()
+            try {
+                writable.delete(TripDatabase.TABLE_CHARGING, null, null)
+
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    val cv = android.content.ContentValues()
+                    for (key in o.keys()) {
+                        val v = o.get(key)
+                        when (v) {
+                            is Int    -> cv.put(key, v)
+                            is Long   -> cv.put(key, v)
+                            is Double -> cv.put(key, v)
+                            is Boolean -> cv.put(key, if (v) 1 else 0)
+                            is String -> cv.put(key, v)
+                            JSONObject.NULL -> cv.putNull(key)
+                        }
+                    }
+                    writable.insert(TripDatabase.TABLE_CHARGING, null, cv)
+                    count++
+                }
+                writable.setTransactionSuccessful()
+            } finally {
+                writable.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "applyChargings failed", e)
+        } finally {
+            db.close()
+        }
+        return count
+    }
+
     private fun applySoh(json: JSONObject?): Int {
         var count = 0
         try {
@@ -370,7 +455,6 @@ class BackupManager(private val context: Context) {
                 return 0
             }
             count = json.optJSONArray("measurements")?.length() ?: 0
-            // Атомарная запись
             val tmp = File(context.filesDir, "soh_data.json.tmp")
             tmp.writeText(json.toString(2))
             if (!tmp.renameTo(file)) {
@@ -400,7 +484,6 @@ class BackupManager(private val context: Context) {
                         is Boolean -> editor.putBoolean(key, v)
                         is String -> {
                             editor.putString(key, v)
-                            // Считаем calibration samples
                             if (name == PREFS_CALIBRATION && key == "samples") {
                                 samplesCount = try { JSONArray(v).length() } catch (_: Exception) { 0 }
                             }
@@ -425,7 +508,6 @@ class BackupManager(private val context: Context) {
     //  СПИСОК БЭКАПОВ
     // ==================================================
 
-    /** Все обычные бэкапы (без rollback), новые сверху. */
     fun listBackups(): List<File> {
         val dir = getBackupDir()
         if (!dir.exists()) return emptyList()
@@ -437,7 +519,6 @@ class BackupManager(private val context: Context) {
             ?: emptyList()
     }
 
-    /** Все rollback-бэкапы, новые сверху. */
     fun listRollbacks(): List<File> {
         val dir = getBackupDir()
         if (!dir.exists()) return emptyList()
@@ -449,7 +530,6 @@ class BackupManager(private val context: Context) {
             ?: emptyList()
     }
 
-    /** Удалить бэкап. */
     fun deleteBackup(file: File): Boolean = try {
         file.delete()
     } catch (e: Exception) {
@@ -468,13 +548,11 @@ class BackupManager(private val context: Context) {
             .apply()
     }
 
-    /** Время последнего успешного экспорта. 0 — ещё не было. */
     fun getLastBackupTs(): Long {
         return context.getSharedPreferences(PREFS_BACKUP_META, Context.MODE_PRIVATE)
             .getLong(KEY_LAST_BACKUP_TS, 0L)
     }
 
-    /** Текст «последний бэкап: …». */
     fun getLastBackupText(): String {
         val ts = getLastBackupTs()
         if (ts == 0L) return "Последний бэкап: ещё не создавался"
@@ -489,6 +567,7 @@ class BackupManager(private val context: Context) {
     sealed class BackupResult {
         data class Success(
             val tripsCount: Int,
+            val chargingsCount: Int,
             val sohMeasurementsCount: Int,
             val calibrationSamplesCount: Int,
             val rollbackPath: String?

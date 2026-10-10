@@ -1,180 +1,477 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#0A0E18"
-    android:orientation="vertical"
-    android:padding="24dp">
+    android:orientation="vertical">
 
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- HEADER                                        -->
+    <!-- ═══════════════════════════════════════════ -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="20dp"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:paddingHorizontal="28dp"
+        android:paddingTop="18dp"
+        android:paddingBottom="10dp">
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:fontFamily="monospace"
-            android:letterSpacing="0.1"
-            android:text="НАСТРОЙКИ"
+            android:letterSpacing="0.05"
+            android:text="Настройки"
             android:textAllCaps="true"
             android:textColor="#FFFFFF"
-            android:textSize="16sp"
+            android:textSize="20sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/settingsClose"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_chip"
+            android:background="@drawable/bg_close_button"
+            android:clickable="true"
+            android:focusable="true"
             android:fontFamily="monospace"
-            android:letterSpacing="0.1"
-            android:paddingHorizontal="20dp"
-            android:paddingVertical="10dp"
-            android:text="ЗАКРЫТЬ"
+            android:letterSpacing="0.08"
+            android:paddingHorizontal="18dp"
+            android:paddingVertical="8dp"
+            android:text="Закрыть"
             android:textAllCaps="true"
             android:textColor="#FFFFFF"
             android:textSize="12sp"
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- Заводские настройки BYD -->
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- BODY: две панели                              -->
+    <!-- ═══════════════════════════════════════════ -->
     <LinearLayout
-        android:id="@+id/btnFactorySettings"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="10dp"
-        android:background="@drawable/bg_chip"
-        android:clickable="true"
-        android:focusable="true"
-        android:gravity="center_vertical"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:baselineAligned="false"
         android:orientation="horizontal"
-        android:paddingHorizontal="20dp"
-        android:paddingVertical="18dp">
+        android:paddingHorizontal="28dp"
+        android:paddingBottom="28dp">
 
-        <TextView
+        <!-- ═══ ЛЕВАЯ ПАНЕЛЬ — НАВИГАТОР ═══ -->
+        <LinearLayout
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:fontFamily="monospace"
-            android:letterSpacing="0.08"
-            android:text="ЗАВОДСКИЕ НАСТРОЙКИ BYD"
-            android:textAllCaps="true"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:layout_height="match_parent"
+            android:layout_weight="15"
+            android:orientation="vertical"
+            android:paddingEnd="14dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="monospace"
-            android:text="›"
-            android:textColor="#B0B4BD"
-            android:textSize="22sp"
-            android:textStyle="bold" />
-    </LinearLayout>
+            <!-- ЗАВОДСКИЕ -->
+            <LinearLayout
+                android:id="@+id/navFactory"
+                style="@style/SettingsNavButton"
+                android:background="@drawable/bg_settings_nav_active">
 
-    <!-- Заводская диагностика BYD (задел на будущее) -->
-    <LinearLayout
-        android:id="@+id/btnFactoryDiagnostics"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="10dp"
-        android:background="@drawable/bg_chip"
-        android:clickable="true"
-        android:focusable="true"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingHorizontal="20dp"
-        android:paddingVertical="18dp">
+                <ImageView
+                    style="@style/SettingsNavIcon"
+                    android:src="@drawable/ic_settings_factory"
+                    app:tint="#FFFFFF"
+                    android:contentDescription="@null" />
 
-        <TextView
+                <TextView
+                    android:id="@+id/navFactoryLabel"
+                    style="@style/SettingsNavLabel"
+                    android:text="Заводские"
+                    android:textColor="#FFFFFF" />
+            </LinearLayout>
+
+            <!-- БЭКАПЫ -->
+            <LinearLayout
+                android:id="@+id/navBackup"
+                style="@style/SettingsNavButton"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_settings_nav_inactive">
+
+                <ImageView
+                    style="@style/SettingsNavIcon"
+                    android:src="@drawable/ic_settings_backup"
+                    app:tint="#B0B4BD"
+                    android:contentDescription="@null" />
+
+                <TextView
+                    android:id="@+id/navBackupLabel"
+                    style="@style/SettingsNavLabel"
+                    android:text="Бэкапы"
+                    android:textColor="#B0B4BD" />
+            </LinearLayout>
+
+            <!-- СЦЕНАРИИ -->
+            <LinearLayout
+                android:id="@+id/navScenarios"
+                style="@style/SettingsNavButton"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_settings_nav_inactive">
+
+                <ImageView
+                    style="@style/SettingsNavIcon"
+                    android:src="@drawable/ic_settings_scenarios"
+                    app:tint="#B0B4BD"
+                    android:contentDescription="@null" />
+
+                <TextView
+                    android:id="@+id/navScenariosLabel"
+                    style="@style/SettingsNavLabel"
+                    android:text="Сценарии"
+                    android:textColor="#B0B4BD" />
+            </LinearLayout>
+
+            <!-- ВИЗУАЛ -->
+            <LinearLayout
+                android:id="@+id/navVisual"
+                style="@style/SettingsNavButton"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_settings_nav_inactive">
+
+                <ImageView
+                    style="@style/SettingsNavIcon"
+                    android:src="@drawable/ic_settings_visual"
+                    app:tint="#B0B4BD"
+                    android:contentDescription="@null" />
+
+                <TextView
+                    android:id="@+id/navVisualLabel"
+                    style="@style/SettingsNavLabel"
+                    android:text="Визуал"
+                    android:textColor="#B0B4BD" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- ═══ ПРАВАЯ ПАНЕЛЬ — КОНТЕНТ ═══ -->
+        <FrameLayout
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:fontFamily="monospace"
-            android:letterSpacing="0.08"
-            android:text="ЗАВОДСКАЯ ДИАГНОСТИКА BYD"
-            android:textAllCaps="true"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:layout_height="match_parent"
+            android:layout_weight="85"
+            android:background="@drawable/bg_settings_content">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="monospace"
-            android:text="›"
-            android:textColor="#B0B4BD"
-            android:textSize="22sp"
-            android:textStyle="bold" />
+            <!-- ─── РАЗДЕЛ: ЗАВОДСКИЕ ─── -->
+            <ScrollView
+                android:id="@+id/sectionFactory"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:padding="24dp"
+                android:scrollbars="none"
+                android:visibility="visible">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/SettingsSectionTitle"
+                        android:text="Заводские" />
+
+                    <TextView
+                        style="@style/SettingsSectionSubtitle"
+                        android:text="Настройки и диагностика BYD" />
+
+                    <LinearLayout
+                        android:id="@+id/btnFactorySettings"
+                        style="@style/SettingsRow"
+                        android:clickable="true"
+                        android:focusable="true">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                style="@style/SettingsRowLabel"
+                                android:text="Заводские настройки BYD" />
+
+                            <TextView
+                                style="@style/SettingsRowSub"
+                                android:text="Открыть системные настройки автомобиля" />
+                        </LinearLayout>
+
+                        <TextView
+                            style="@style/SettingsRowArrow"
+                            android:text="›" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/btnFactoryDiagnostics"
+                        style="@style/SettingsRow"
+                        android:layout_marginTop="8dp"
+                        android:clickable="true"
+                        android:focusable="true">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                style="@style/SettingsRowLabel"
+                                android:text="Заводская диагностика BYD" />
+
+                            <TextView
+                                style="@style/SettingsRowSub"
+                                android:text="Factory test — инженерное меню" />
+                        </LinearLayout>
+
+                        <TextView
+                            style="@style/SettingsRowArrow"
+                            android:text="›" />
+                    </LinearLayout>
+                </LinearLayout>
+            </ScrollView>
+
+            <!-- ─── РАЗДЕЛ: БЭКАПЫ ─── -->
+            <ScrollView
+                android:id="@+id/sectionBackup"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:padding="24dp"
+                android:scrollbars="none"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/SettingsSectionTitle"
+                        android:text="Бэкапы" />
+
+                    <TextView
+                        style="@style/SettingsSectionSubtitle"
+                        android:text="Сохранение и восстановление данных лаунчера" />
+
+                    <TextView
+                        android:id="@+id/btnBackupExport"
+                        style="@style/SettingsPrimaryButton"
+                        android:background="@drawable/bg_settings_btn_blue"
+                        android:text="Создать бэкап" />
+
+                    <TextView
+                        android:id="@+id/btnBackupImport"
+                        style="@style/SettingsPrimaryButton"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/bg_settings_btn_violet"
+                        android:text="Восстановить из бэкапа" />
+
+                    <TextView
+                        android:id="@+id/tvBackupStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:fontFamily="monospace"
+                        android:letterSpacing="0.04"
+                        android:text="Последний бэкап: —"
+                        android:textColor="#6E7689"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </ScrollView>
+
+            <!-- ─── РАЗДЕЛ: СЦЕНАРИИ ─── -->
+            <ScrollView
+                android:id="@+id/sectionScenarios"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:padding="24dp"
+                android:scrollbars="none"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/SettingsSectionTitle"
+                        android:text="Сценарии" />
+
+                    <TextView
+                        style="@style/SettingsSectionSubtitle"
+                        android:text="Автоматизации на основе состояния автомобиля" />
+
+                    <LinearLayout
+                        android:id="@+id/scenarioDho"
+                        style="@style/SettingsCheckboxRow">
+
+                        <View
+                            android:id="@+id/cbDho"
+                            style="@style/SettingsCheckbox" />
+
+                        <LinearLayout
+                            style="@style/SettingsCheckboxTextWrap">
+
+                            <TextView
+                                style="@style/SettingsCheckboxTitle"
+                                android:text="ДХО при положении P" />
+
+                            <TextView
+                                style="@style/SettingsCheckboxSub"
+                                android:text="Выключать дневные ходовые огни при парковке" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/scenarioSeatHeat"
+                        style="@style/SettingsCheckboxRow"
+                        android:layout_marginTop="8dp">
+
+                        <View
+                            android:id="@+id/cbSeatHeat"
+                            style="@style/SettingsCheckbox" />
+
+                        <LinearLayout
+                            style="@style/SettingsCheckboxTextWrap">
+
+                            <TextView
+                                style="@style/SettingsCheckboxTitle"
+                                android:text="Подогрев сидений — авто-выкл" />
+
+                            <TextView
+                                style="@style/SettingsCheckboxSub"
+                                android:text="Через 1 минуту после отстёгивания ремня" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/scenarioClimate"
+                        style="@style/SettingsCheckboxRow"
+                        android:layout_marginTop="8dp">
+
+                        <View
+                            android:id="@+id/cbClimate"
+                            style="@style/SettingsCheckbox" />
+
+                        <LinearLayout
+                            style="@style/SettingsCheckboxTextWrap">
+
+                            <TextView
+                                style="@style/SettingsCheckboxTitle"
+                                android:text="Эко / комфорт климат" />
+
+                            <TextView
+                                style="@style/SettingsCheckboxSub"
+                                android:text="Переключение режима кондиционера по условиям" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <TextView
+                        style="@style/SettingsPlaceholder"
+                        android:text="— Скоро больше сценариев —" />
+                </LinearLayout>
+            </ScrollView>
+
+            <!-- ─── РАЗДЕЛ: ВИЗУАЛ ─── -->
+            <ScrollView
+                android:id="@+id/sectionVisual"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:padding="24dp"
+                android:scrollbars="none"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/SettingsSectionTitle"
+                        android:text="Визуал" />
+
+                    <TextView
+                        style="@style/SettingsSectionSubtitle"
+                        android:text="Темы и оформление интерфейса" />
+
+                    <LinearLayout
+                        android:id="@+id/visualTheme"
+                        style="@style/SettingsRow"
+                        android:clickable="true"
+                        android:focusable="true">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                style="@style/SettingsRowLabel"
+                                android:text="Тема оформления" />
+
+                            <TextView
+                                style="@style/SettingsRowSub"
+                                android:text="Тёмная · Светлая · Синяя" />
+                        </LinearLayout>
+
+                        <TextView
+                            style="@style/SettingsRowArrow"
+                            android:text="›" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/visualAutoTime"
+                        style="@style/SettingsCheckboxRow"
+                        android:layout_marginTop="8dp">
+
+                        <View
+                            android:id="@+id/cbAutoTime"
+                            style="@style/SettingsCheckbox" />
+
+                        <LinearLayout
+                            style="@style/SettingsCheckboxTextWrap">
+
+                            <TextView
+                                style="@style/SettingsCheckboxTitle"
+                                android:text="Авто-переключение по времени" />
+
+                            <TextView
+                                style="@style/SettingsCheckboxSub"
+                                android:text="Днём — светлая, ночью — тёмная" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/visualAmbient"
+                        style="@style/SettingsCheckboxRow"
+                        android:layout_marginTop="8dp">
+
+                        <View
+                            android:id="@+id/cbAmbient"
+                            style="@style/SettingsCheckbox" />
+
+                        <LinearLayout
+                            style="@style/SettingsCheckboxTextWrap">
+
+                            <TextView
+                                style="@style/SettingsCheckboxTitle"
+                                android:text="По освещённости" />
+
+                            <TextView
+                                style="@style/SettingsCheckboxSub"
+                                android:text="Реакция на датчик света автомобиля" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <TextView
+                        style="@style/SettingsPlaceholder"
+                        android:text="— Скоро: пользовательские цвета —" />
+                </LinearLayout>
+            </ScrollView>
+
+        </FrameLayout>
     </LinearLayout>
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:fontFamily="monospace"
-        android:letterSpacing="0.08"
-        android:lineSpacingMultiplier="1.3"
-        android:text="Другие настройки лаунчера\n(пороги, split ratio, тема плашки)\nбудут добавлены позже."
-        android:textAllCaps="true"
-        android:textColor="#B0B4BD"
-        android:textSize="11sp" />
-    <!-- ==================== БЭКАП ==================== -->
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="24dp"
-        android:layout_marginBottom="16dp"
-        android:background="#20FFFFFF" />
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp"
-        android:fontFamily="monospace"
-        android:letterSpacing="0.1"
-        android:text="БЭКАП И ВОССТАНОВЛЕНИЕ"
-        android:textAllCaps="true"
-        android:textColor="#B0B4BD"
-        android:textSize="11sp" />
-
-    <Button
-        android:id="@+id/btnBackupExport"
-        android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:backgroundTint="#1F6FBF"
-        android:fontFamily="monospace"
-        android:letterSpacing="0.08"
-        android:text="СОЗДАТЬ БЭКАП"
-        android:textColor="#FFFFFF"
-        android:textSize="13sp" />
-
-    <Button
-        android:id="@+id/btnBackupImport"
-        android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:layout_marginTop="8dp"
-        android:backgroundTint="#7A4DFF"
-        android:fontFamily="monospace"
-        android:letterSpacing="0.08"
-        android:text="ВОССТАНОВИТЬ ИЗ БЭКАПА"
-        android:textColor="#FFFFFF"
-        android:textSize="13sp" />
-
-    <TextView
-        android:id="@+id/tvBackupStatus"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:fontFamily="monospace"
-        android:text=""
-        android:textColor="#B0B4BD"
-        android:textSize="11sp" />
-
 </LinearLayout>

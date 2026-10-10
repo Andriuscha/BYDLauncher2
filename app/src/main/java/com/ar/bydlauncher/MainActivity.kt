@@ -44,11 +44,15 @@ import org.json.JSONObject
 import com.ar.bydlauncher.db.TripRecord
 import com.ar.bydlauncher.db.TripRepository
 import com.ar.bydlauncher.db.TripDaySummary
+import com.ar.bydlauncher.db.ChargingRecord
+import com.ar.bydlauncher.db.ChargingRepository
 import com.ar.bydlauncher.service.BydBackgroundService
 import com.ar.bydlauncher.byd.RangeEstimator.Factor
 import com.ar.bydlauncher.byd.RouteProfile
 import com.ar.bydlauncher.byd.RouteProfileDetector
 import com.ar.bydlauncher.byd.CalibrationRepository
+import com.ar.bydlauncher.scenario.ScenarioEngine
+import com.ar.bydlauncher.scenario.ScenarioSettingsRepository
 
 class MainActivity : Activity() {
 
@@ -63,6 +67,7 @@ class MainActivity : Activity() {
     private lateinit var bmsRange: TextView
     private lateinit var bmsRangeMax: TextView
     private lateinit var bmsRangeMin: TextView
+    private lateinit var bmsRangeFactors: TextView
     private lateinit var bmsCellMax: TextView
     private lateinit var bmsCellMin: TextView
     private lateinit var bmsTempMax: TextView
@@ -76,12 +81,16 @@ class MainActivity : Activity() {
     private lateinit var bmsTripConsumption: TextView
     private lateinit var bmsTripEnergy: TextView
     private lateinit var bmsFullRange: TextView
+    private lateinit var bmsOdometer: TextView
+    private lateinit var bmsLifetimeKwh: TextView
+    private lateinit var bmsRouteProfile: TextView
+    private lateinit var bmsRouteProfileBadge: TextView
 
     // ── Кликабельные контейнеры виджетов ──
     private lateinit var weatherCard: View
-    private lateinit var bmsChipTop: View       // SOC + прогноз
-    private lateinit var bmsChipMiddle: View    // ячейки + SOH
-    private lateinit var bmsChipBottom: View    // поездка за день
+    private lateinit var bmsChipTop: View
+    private lateinit var bmsChipMiddle: View
+    private lateinit var bmsChipBottom: View
     private lateinit var sohBlock: View
 
     // ── Погодный виджет ──
@@ -93,6 +102,7 @@ class MainActivity : Activity() {
     private lateinit var wNight: TextView
     private lateinit var wOut: TextView
     private lateinit var wIn: TextView
+    private lateinit var wExtra: TextView
 
     private lateinit var coilLoader: ImageLoader
 
@@ -112,17 +122,23 @@ class MainActivity : Activity() {
     private lateinit var sohCalc: SohCalculator
     private lateinit var fullChargeTracker: FullChargeTracker
     private lateinit var captionMask: CaptionMaskOverlay
-    private lateinit var bmsRangeFactors: TextView
+    private lateinit var chargingRepository: ChargingRepository
     private val rangeEstimator = RangeEstimator()
     private val routeProfileDetector = RouteProfileDetector()
     private lateinit var calibrationRepo: CalibrationRepository
 
-    /** Последний consumption из RangeEstimator — для калибровки. */
+    // ── Сценарии ──
+    private lateinit var scenarioSettings: ScenarioSettingsRepository
+    private lateinit var scenarioEngine: ScenarioEngine
+
     @Volatile
     private var lastEstimatedConsumption: Double = 0.0
 
     @Volatile
     private var smoothedSpeedKmh: Float = 50f
+
+    @Volatile
+    private var lastTripState: TripDetector.TripState? = null
 
     @Volatile
     private var lastWeather: Weather? = null
@@ -180,7 +196,7 @@ class MainActivity : Activity() {
 
         private const val NOMINAL_KWH = 44.9
         private const val SPLIT_RATIO = 0.45
-        private const val CAPTION_HEIGHT_PX = 56
+        private const val CAPTION_HEIGHT_PX = 80
 
         private const val FIND_STACK_MAX_ATTEMPTS = 8
         private const val FIND_STACK_RETRY_DELAY_MS = 500L
@@ -223,6 +239,10 @@ class MainActivity : Activity() {
 
         // ── BMS Dashboard ──
         bmsSoc             = findViewById(R.id.bmsSoc)
+        bmsOdometer        = findViewById(R.id.bmsOdometer)
+        bmsLifetimeKwh     = findViewById(R.id.bmsLifetimeKwh)
+        bmsRouteProfile    = findViewById(R.id.bmsRouteProfile)
+        bmsRouteProfileBadge = findViewById(R.id.bmsRouteProfileBadge)
         bmsPower           = findViewById(R.id.bmsPower)
         bmsPowerState      = findViewById(R.id.bmsPowerState)
         bmsRange           = findViewById(R.id.bmsRange)
@@ -259,6 +279,7 @@ class MainActivity : Activity() {
         wNight   = findViewById(R.id.wNight)
         wOut     = findViewById(R.id.wOut)
         wIn      = findViewById(R.id.wIn)
+        wExtra   = findViewById(R.id.wExtra)
 
         coilLoader = ImageLoader.Builder(this)
             .components { add(SvgDecoder.Factory()) }
@@ -281,11 +302,64 @@ class MainActivity : Activity() {
         ac = AutoserviceClient(adb)
         reader = BmsReader(ac)
         sohCalc = SohCalculator(File(filesDir, "soh_data.json"), nominalKwh = NOMINAL_KWH)
+
+        // ── Подключаем запись зарядок в БД ──
+        sohCalc.listener = object : SohCalculator.Companion.ChargingListener {
+            override fun onChargingFinished(
+                startTs: Long,
+                endTs: Long,
+                socStart: Double,
+                socEnd: Double,
+                energyKwh: Double,
+                bmsStart: Double?,
+                bmsEnd: Double?,
+                cellTempStart: Double?,
+                cellTempEnd: Double?,
+                tempOutsideStart: Double?,
+                tempOutsideEnd: Double?,
+                odometerKm: Double?,
+                acDc: String?,
+                accepted: Boolean,
+                rejectReason: String?
+            ) {
+                scope.launch {
+                    try {
+                        val record = ChargingRecord(
+                            startedAt = startTs,
+                            endedAt = endTs,
+                            durationMin = (endTs - startTs) / 60_000L,
+                            acDc = acDc,
+                            energyVehicleKwh = energyKwh,
+                            bmsCounterStart = bmsStart,
+                            bmsCounterEnd = bmsEnd,
+                            cellTempStartC = cellTempStart,
+                            cellTempEndC = cellTempEnd,
+                            tempOutsideStartC = tempOutsideStart,
+                            tempOutsideEndC = tempOutsideEnd,
+                            odometerKm = odometerKm,
+                            startSoc = socStart.toInt(),
+                            endSoc = socEnd.toInt(),
+                            notes = if (!accepted) "Отклонена SohCalculator: $rejectReason" else null
+                        )
+                        val id = chargingRepository.insert(record)
+                        Log.i(TAG, "Charging saved to DB, id=$id, acDc=$acDc, accepted=$accepted")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to save charging", e)
+                    }
+                }
+            }
+        }
+
         fullChargeTracker = FullChargeTracker(this)
         captionMask = CaptionMaskOverlay(this)
         carLocationProvider = CarLocationProvider(this)
         tripRepository = TripRepository(this)
         calibrationRepo = CalibrationRepository(this)
+        chargingRepository = ChargingRepository(this)
+
+        // ── Сценарии ──
+        scenarioSettings = ScenarioSettingsRepository(this)
+        scenarioEngine = ScenarioEngine(scenarioSettings, ac)
 
         scope.launch {
             try {
@@ -370,8 +444,15 @@ class MainActivity : Activity() {
                 delay(200)
                 val reallyVisible = isNavigatorReallyVisible()
                 if (!reallyVisible) {
-                    Log.i(TAG, "onResume: навигатор не виден после возврата — восстанавливаю")
                     showNavigatorInternal()
+                } else {
+                    withContext(Dispatchers.Main) {
+                        captionMask.show(
+                            top = 0,
+                            captionHeightPx = CAPTION_HEIGHT_PX,
+                            text = lastCaptionText
+                        )
+                    }
                 }
             }
         }
@@ -385,13 +466,16 @@ class MainActivity : Activity() {
             }
         }
     }
+    override fun onPause() {
+        super.onPause()
+        runCatching { captionMask.hide() }
+    }
 
     // ==================================================
     // Клики по виджетам
     // ==================================================
 
     private fun setupWidgetClicks() {
-        // Погода → расширенный прогноз
         weatherCard.setOnClickListener {
             val loc = lastKnownLocation
             WeatherDetailsActivity.cachedLat = loc?.latitude ?: Double.NaN
@@ -400,22 +484,18 @@ class MainActivity : Activity() {
             openInternalActivity(Intent(this@MainActivity, WeatherDetailsActivity::class.java))
         }
 
-        // Верхний BMS-чип → история зарядок
         bmsChipTop.setOnClickListener {
             openInternalActivity(Intent(this@MainActivity, ChargingHistoryActivity::class.java))
         }
 
-        // Средний BMS-чип → SOH-детали (то же, что sohBlock)
         bmsChipMiddle.setOnClickListener {
             openSohDetails()
         }
 
-        // Нижний BMS-чип → история поездок
         bmsChipBottom.setOnClickListener {
             openInternalActivity(Intent(this@MainActivity, TripsActivity::class.java))
         }
 
-        // SOH-блок внутри среднего чипа — тот же путь
         sohBlock.setOnClickListener {
             openSohDetails()
         }
@@ -430,14 +510,10 @@ class MainActivity : Activity() {
         openInternalActivity(Intent(this@MainActivity, BatteryDetailsActivity::class.java))
     }
 
-    /**
-     * Универсальный способ открыть свою Activity.
-     * Помечаем externalAppActive, чтобы re-show после тапа не сработал поверх новой Activity.
-     * onResume() сам вернёт навигатор при возврате.
-     */
     private fun openInternalActivity(intent: Intent) {
         externalAppActive = true
         navWasVisibleBeforeExternal = isNavigatorVisible
+        runCatching { captionMask.hide() }
         startActivity(intent)
     }
 
@@ -447,9 +523,6 @@ class MainActivity : Activity() {
 
     private fun setupBottomButtons() {
         btnNav.setOnClickListener {
-            // ВАЖНО: lastToggleTs выставляем СИНХРОННО, до scope.launch,
-            // чтобы dispatchTouchEvent → scheduleNavigatorReShow не успел
-            // проскочить и не спорил с намеренным toggle.
             lastToggleTs = System.currentTimeMillis()
             selectDockButton(btnNav)
             scope.launch { toggleNavigator() }
@@ -497,15 +570,6 @@ class MainActivity : Activity() {
         }
     }
 
-    /**
-     * Единая точка планирования re-show.
-     *
-     * На BYD-ГУ isNavigatorReallyVisible() возвращает true даже когда окно
-     * фактически скрыто потерей фокуса (bounds остаются 864..1920, но
-     * стек помечен mVisible=false). Поэтому проверку убрали: если
-     * isNavigatorVisible == true (пользователь хочет видеть), просто
-     * показываем Яндекс повторно через am start --windowingMode 5.
-     */
     private fun scheduleNavigatorReShow(source: String) {
         if (!navigatorReady || navStackId < 0) return
         if (!isNavigatorVisible) return
@@ -593,8 +657,6 @@ class MainActivity : Activity() {
         Log.i(TAG, "showNavigator resize result: $r")
         delay(150)
 
-        // Повторный am start --windowingMode 5 реально возвращает окно
-        // на BYD (move-task и reorder-to-front не сбрасывают mVisible).
         val reShowCmd = "am start --windowingMode 5 " +
                 "-n $YANDEX_PKG/$YANDEX_ACTIVITY"
         Log.i(TAG, "showNavigator reShow cmd: $reShowCmd")
@@ -916,6 +978,14 @@ class MainActivity : Activity() {
             wNight.text   = "%.0f°".format(w.tempMin)
             wOut.text     = "%.0f°".format(w.temperature)
 
+            val windStr = w.windSpeedMs?.let { "💨 %.0f м/с".format(it) }
+            val precipStr = when {
+                (w.snowfall ?: 0f) > 0.1f -> "❄ %.1f мм".format(w.snowfall)
+                (w.precipitation ?: 0f) > 0.1f -> "💧 %.1f мм".format(w.precipitation)
+                else -> "💧 0 мм"
+            }
+            wExtra.text = listOfNotNull(windStr, precipStr).joinToString(" · ")
+
             val iconFile = weatherIconName(w.icon, w.description)
             val url = METEO_BASE + iconFile
             Log.i(TAG, "Loading weather icon: $url")
@@ -1054,14 +1124,19 @@ class MainActivity : Activity() {
                     sohCalc.onSnapshot(snap)
                     fullChargeTracker.onSnapshot(snap.socPercent, snap.lifetimeKm)
 
-                    // ── Профиль маршрута: подаём скорость в детектор ──
                     snap.speedKmh?.let {
                         routeProfileDetector.addSpeed(System.currentTimeMillis(), it)
                     }
 
+                    // ── Порядок важен: сначала updateTrip, потом updateBmsDashboard,
+                    //    затем сценарии. ──
+                    updateTrip(snap)
                     updateBmsDashboard(snap)
                     updateTemperatures(snap)
-                    updateTrip(snap)
+
+                    // ── Сценарии ──
+                    runCatching { scenarioEngine.onSnapshot(snap) }
+                        .onFailure { Log.e(TAG, "scenarioEngine failed", it) }
                 }
 
                 delay(POLL_INTERVAL_MS)
@@ -1079,6 +1154,13 @@ class MainActivity : Activity() {
     // ==================================================
 
     private suspend fun updateBmsDashboard(s: BatterySnapshot) = withContext(Dispatchers.Main) {
+
+        val rawSpeed = s.speedKmh ?: 0f
+        smoothedSpeedKmh = smoothedSpeedKmh * 0.985f + rawSpeed * 0.015f
+
+        val carBearing = carLocationProvider.getCurrentBearing()
+        val routeProfile = routeProfileDetector.getProfile()
+        val calibrationFactor = calibrationRepo.getCalibrationFactor(s.tempOutsideC ?: 15)
 
         val soc: Int = (s.socPercent ?: 0f).toInt()
         bmsSoc.text = soc.toString()
@@ -1100,8 +1182,8 @@ class MainActivity : Activity() {
             val absKw = Math.abs(powerKw)
 
             bmsPower.text = when {
-                absKw >= 10.0 -> "%+.1f".format(powerKw)
-                else          -> "%+.2f".format(powerKw)
+                absKw >= 10.0 -> String.format(Locale.US, "%+.1f", powerKw)
+                else          -> String.format(Locale.US, "%+.2f", powerKw)
             }
 
             when {
@@ -1142,20 +1224,40 @@ class MainActivity : Activity() {
         bmsSoh.text = "$soh%"
         lastSohOem = s.sohPercent
 
-        // ── Сглаживание скорости ──
-        val rawSpeed = s.speedKmh ?: 0f
-        smoothedSpeedKmh = smoothedSpeedKmh * 0.985f + rawSpeed * 0.015f
+        s.lifetimeKm?.let {
+            bmsOdometer.text = String.format(Locale.US, "%,.1f", it)
+        } ?: run {
+            bmsOdometer.text = "—"
+        }
 
-        // ── Курс машины для ветра ──
-        val carBearing = carLocationProvider.getCurrentBearing()
+        s.lifetimeKwh?.let {
+            bmsLifetimeKwh.text = String.format(Locale.US, "%.1f", it)
+        } ?: run {
+            bmsLifetimeKwh.text = "—"
+        }
 
-        // ── Профиль маршрута ──
-        val routeProfile = routeProfileDetector.getProfile()
+        val tripAvgSpeed = lastTripState?.avgSpeedKmh ?: 0.0
+        bmsRouteProfile.text = if (tripAvgSpeed > 0.5)
+            String.format(Locale.US, "%.0f", tripAvgSpeed)
+        else "—"
 
-        // ── Коэффициент исторической калибровки ──
-        val calibrationFactor = calibrationRepo.getCalibrationFactor(s.tempOutsideC ?: 15)
+        val profileLabel = when (routeProfile) {
+            RouteProfile.CITY    -> "ГОРОД"
+            RouteProfile.MKAD    -> "МКАД"
+            RouteProfile.HIGHWAY -> "ТРАССА"
+            else                 -> "—"
+        }
+        bmsRouteProfileBadge.text = profileLabel
 
-        // ── Прогноз пробега ──
+        val (bgRes, badgeColor) = when (routeProfile) {
+            RouteProfile.CITY    -> R.drawable.bg_profile_city    to 0xFF4FD1C5.toInt()
+            RouteProfile.MKAD    -> R.drawable.bg_profile_mkad    to 0xFF5B9CFF.toInt()
+            RouteProfile.HIGHWAY -> R.drawable.bg_profile_highway to 0xFFA88BFF.toInt()
+            else                 -> R.drawable.bg_profile_unknown to 0xFFB0B4BD.toInt()
+        }
+        bmsRouteProfileBadge.setBackgroundResource(bgRes)
+        bmsRouteProfileBadge.setTextColor(badgeColor)
+
         val est = rangeEstimator.estimate(
             socPercent        = s.socPercent ?: 0f,
             sohPercent        = s.sohPercent,
@@ -1169,30 +1271,28 @@ class MainActivity : Activity() {
             calibrationFactor = calibrationFactor
         )
 
-        // Сохраняем последний predicted для будущей калибровки
         lastEstimatedConsumption = est.consumption
 
         bmsRange.text    = est.mainKm.toString()
         bmsRangeMax.text = est.maxKm.toString()
         bmsRangeMin.text = est.minKm.toString()
 
-        // Цвет прогноза: янтарный при предупреждении обогрева
         bmsRange.setTextColor(
             if (est.heaterWarning) COLOR_WARN else COLOR_NEUTRAL
         )
-        // ── Строка факторов ──
+
         if (est.favorable) {
+            bmsRangeFactors.visibility = View.VISIBLE
             bmsRangeFactors.text = "✓ БЛАГОПРИЯТНЫЕ УСЛОВИЯ"
             bmsRangeFactors.setTextColor(COLOR_OK)
         } else if (est.factors.isEmpty()) {
             bmsRangeFactors.text = ""
-            bmsRangeFactors.visibility = android.view.View.GONE
+            bmsRangeFactors.visibility = View.GONE
         } else {
-            bmsRangeFactors.visibility = android.view.View.VISIBLE
+            bmsRangeFactors.visibility = View.VISIBLE
             bmsRangeFactors.text = est.factors.joinToString(" · ") {
                 "${if (it.percent >= 0) "+" else ""}${it.percent}% ${it.label}"
             }
-            // Цвет по худшему фактору
             val worst = est.factors.maxByOrNull { Math.abs(it.percent) }
             bmsRangeFactors.setTextColor(
                 when (worst?.severity) {
@@ -1202,18 +1302,16 @@ class MainActivity : Activity() {
                 }
             )
         }
-        bmsRangeFactors.visibility = android.view.View.VISIBLE
 
-        // Лог факторов для отладки
         if (est.factors.isNotEmpty()) {
             val factorStr = est.factors.joinToString(" · ") {
                 "${it.percent}% ${it.label}"
             }
-            Log.i(TAG, "Range factors: $factorStr (main=${est.mainKm}, cons=${"%.2f".format(est.consumption)})")
+            Log.i(TAG, "Range factors: $factorStr (main=${est.mainKm}, cons=${String.format(Locale.US, "%.2f", est.consumption)})")
         }
 
-        bmsCellMax.text = s.maxCellV?.let { "%.3f".format(it) } ?: "—"
-        bmsCellMin.text = s.minCellV?.let { "%.3f".format(it) } ?: "—"
+        bmsCellMax.text = s.maxCellV?.let { String.format(Locale.US, "%.3f", it) } ?: "—"
+        bmsCellMin.text = s.minCellV?.let { String.format(Locale.US, "%.3f", it) } ?: "—"
 
         val deltaMv = s.cellDeltaMv ?: 0
         bmsDelta.text = "$deltaMv мВ"
@@ -1229,13 +1327,13 @@ class MainActivity : Activity() {
         bmsTempMin.text = s.minBatTempC?.toString() ?: "—"
 
         bmsHv.text = s.hvVoltageV?.let { "$it В" } ?: "— В"
-        bmsCurrent.text = s.hvCurrentA?.let { "%.0f А".format(Math.abs(it)) } ?: "— А"
-        bmsV12.text = s.voltage12v?.let { "%.2f".format(it) } ?: "—"
+        bmsCurrent.text = s.hvCurrentA?.let { String.format(Locale.US, "%.0f А", Math.abs(it)) } ?: "— А"
+        bmsV12.text = s.voltage12v?.let { String.format(Locale.US, "%.2f", it) } ?: "—"
 
         val sinceFull = fullChargeTracker.getDistanceSinceFullCharge(s.lifetimeKm)
         bmsFullRange.text = when {
             sinceFull == null -> "— км"
-            else -> "%.0f км".format(sinceFull)
+            else -> String.format(Locale.US, "%.0f км", sinceFull)
         }
     }
 
@@ -1260,9 +1358,9 @@ class MainActivity : Activity() {
     }
 
     private fun updateDaySummaryUi(s: TripDaySummary) {
-        bmsTripDistance.text    = "%.1f км".format(s.distanceKm)
-        bmsTripConsumption.text = "%.1f кВт·ч".format(s.consumptionKwh100)
-        bmsTripEnergy.text      = "%.1f кВт·ч".format(s.energyKwh)
+        bmsTripDistance.text    = String.format(Locale.US, "%.1f км", s.distanceKm)
+        bmsTripConsumption.text = String.format(Locale.US, "%.1f кВт·ч", s.consumptionKwh100)
+        bmsTripEnergy.text      = String.format(Locale.US, "%.1f кВт·ч", s.energyKwh)
 
         bmsTripConsumption.setTextColor(
             when {
@@ -1291,6 +1389,8 @@ class MainActivity : Activity() {
             battTempC = s.maxBatTempC,
             driverBeltBuckled = s.driverBeltBuckled,
         )
+
+        lastTripState = trip
 
         if (trip.active && !tripWasActive) {
             tripWasActive = true
@@ -1376,7 +1476,6 @@ class MainActivity : Activity() {
                     endLon = loc?.longitude
                 )
 
-                // ── Сохраняем sample для исторической калибровки ──
                 val predictedForCalibration = lastEstimatedConsumption
                 val profileAtEnd = routeProfileDetector.getProfile()
                 val tripKm = trip.distanceKm
@@ -1448,6 +1547,8 @@ class MainActivity : Activity() {
         runCatching { tripRepository.close() }
             .onFailure { Log.w(TAG, "tripRepository.close failed: ${it.message}") }
 
+        runCatching { chargingRepository.close() }
+            .onFailure { Log.w(TAG, "chargingRepository.close failed: ${it.message}") }
 
         super.onDestroy()
     }

@@ -1,5 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.BYDLauncher" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.BYDLauncher" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#0A0E18</item>
+
+        <item name="android:statusBarColor">#0A0E18</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowTranslucentStatus">false</item>
+
+        <item name="android:navigationBarColor">#0A0E18</item>
+        <item name="android:windowTranslucentNavigation">false</item>
+
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+
+    <style name="Theme.BYDLauncher.Fullscreen" parent="Theme.BYDLauncher">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+
 </resources>

@@ -5,66 +5,227 @@
     <!-- DockButton — стиль для LinearLayout кнопки дока               -->
     <!-- ============================================================ -->
     <style name="DockButton">
-        <!-- Размер: кнопки равные, делят ширину контейнера -->
         <item name="android:layout_width">0dp</item>
         <item name="android:layout_height">match_parent</item>
         <item name="android:layout_weight">1</item>
 
-        <!-- Отступ между кнопками (снаружи) -->
         <item name="android:layout_margin">3dp</item>
 
-        <!-- Внутри — иконка + текст по горизонтали -->
         <item name="android:orientation">horizontal</item>
         <item name="android:gravity">center</item>
 
-        <!-- Кликабельность: без этих двух строк LinearLayout не получает focus -->
         <item name="android:clickable">true</item>
         <item name="android:focusable">true</item>
 
-        <!-- Отступы по бокам, чтобы контент не прилипал к краям -->
         <item name="android:paddingHorizontal">10dp</item>
     </style>
 
     <!-- ============================================================ -->
-    <!-- DockIcon — стиль для ImageView внутри кнопки дока            -->
+    <!-- DockIcon — стиль для ImageView внутри кнопки дока             -->
     <!-- ============================================================ -->
     <style name="DockIcon">
         <item name="android:layout_width">18dp</item>
         <item name="android:layout_height">18dp</item>
 
-        <!-- Отступ справа, чтобы текст не прилипал к иконке -->
         <item name="android:layout_marginEnd">8dp</item>
 
-        <!-- Иконка вертикально центрируется относительно текста -->
         <item name="android:layout_gravity">center_vertical</item>
     </style>
 
     <!-- ============================================================ -->
-    <!-- DockLabel — стиль для TextView внутри кнопки дока            -->
+    <!-- DockLabel — стиль для TextView внутри кнопки дока             -->
     <!-- ============================================================ -->
     <style name="DockLabel">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
 
-        <!-- Цвет — из селектора @color/dock_text:
-             активна → t1 (ярко-белый), неактивна → t2 (приглушённый) -->
         <item name="android:textColor">@color/dock_text</item>
 
-        <!-- Размер текста: 11sp, как в веб-версии -->
         <item name="android:textSize">11sp</item>
 
-        <!-- Моно-шрифт: придаёт «пультовый» вид -->
         <item name="android:fontFamily">monospace</item>
 
-        <!-- Межбуквенное расстояние: 0.12 em ≈ 1.2px при 11sp.
-             В Android letterSpacing в em, а не в px! -->
         <item name="android:letterSpacing">0.12</item>
 
-        <!-- Все прописные буквы, как в веб-версии -->
         <item name="android:textAllCaps">true</item>
-
-        <!-- Текст не обрезается, может занимать несколько строк, но
-             у нас короткие подписи — singleLine не нужен -->
+    </style>
+    <!-- ============================================================ -->
+    <!-- SettingsNavButton — кнопка в левой панели настроек            -->
+    <!-- ============================================================ -->
+    <style name="SettingsNavButton">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">20dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:paddingVertical">14dp</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
     </style>
 
+    <style name="SettingsNavIcon">
+        <item name="android:layout_width">18dp</item>
+        <item name="android:layout_height">18dp</item>
+        <item name="android:layout_marginEnd">10dp</item>
+    </style>
+
+    <style name="SettingsNavLabel">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+
+    <!-- ============================================================ -->
+    <!-- Settings: заголовки разделов                                  -->
+    <!-- ============================================================ -->
+    <style name="SettingsSectionTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:letterSpacing">0.06</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="SettingsSectionSubtitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">22dp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:letterSpacing">0.04</item>
+        <item name="android:textColor">#6E7689</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <!-- ============================================================ -->
+    <!-- SettingsRow — строка-пункт (с стрелкой)                       -->
+    <!-- ============================================================ -->
+    <style name="SettingsRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/bg_settings_row</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingHorizontal">20dp</item>
+        <item name="android:paddingVertical">16dp</item>
+    </style>
+
+    <style name="SettingsRowLabel">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textColor">#E8ECF4</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="SettingsRowSub">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:letterSpacing">0.04</item>
+        <item name="android:textColor">#6E7689</item>
+        <item name="android:textSize">11sp</item>
+    </style>
+
+    <style name="SettingsRowArrow">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">#5B9CFF</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <!-- ============================================================ -->
+    <!-- SettingsPrimaryButton — большая кнопка                        -->
+    <!-- ============================================================ -->
+    <style name="SettingsPrimaryButton">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:gravity">center</item>
+        <item name="android:letterSpacing">0.10</item>
+        <item name="android:paddingVertical">16dp</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <!-- ============================================================ -->
+    <!-- SettingsCheckboxRow — строка с чекбоксом                      -->
+    <!-- ============================================================ -->
+    <style name="SettingsCheckboxRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/bg_settings_row</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:paddingHorizontal">20dp</item>
+        <item name="android:paddingVertical">16dp</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <style name="SettingsCheckbox">
+        <item name="android:layout_width">20dp</item>
+        <item name="android:layout_height">20dp</item>
+        <item name="android:layout_marginTop">2dp</item>
+        <item name="android:layout_marginEnd">14dp</item>
+        <item name="android:background">@drawable/bg_settings_checkbox</item>
+    </style>
+
+    <style name="SettingsCheckboxTextWrap">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="SettingsCheckboxTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:letterSpacing">0.05</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textColor">#E8ECF4</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="SettingsCheckboxSub">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">3dp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:letterSpacing">0.04</item>
+        <item name="android:textColor">#6E7689</item>
+        <item name="android:textSize">11sp</item>
+    </style>
+
+    <style name="SettingsPlaceholder">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">30dp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:gravity">center</item>
+        <item name="android:letterSpacing">0.04</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textColor">#6E7689</item>
+        <item name="android:textSize">12sp</item>
+    </style>
 </resources>
