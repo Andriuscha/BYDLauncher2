@@ -5,13 +5,42 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.util.Log
 
-class TripDatabase(context: Context) :
+/**
+ * Единственная точка доступа к trips.db — через [get].
+ *
+ * Раньше TripRepository, ChargingRepository и BackupManager (6 мест) создавали
+ * каждый свой SQLiteOpenHelper на один файл: несколько соединений без WAL
+ * (риск "database is locked" при параллельной записи) и каждый close() закрывал
+ * только своё. Теперь helper один на процесс, включён WAL (читатели не
+ * блокируют писателя), а close() — намеренно no-op: общий helper закрывать нельзя,
+ * иначе запросы из других потоков упадут с IllegalStateException.
+ *
+ * v3: добавлены km_per_pct (эмпирика км/%) и trips.route_profile.
+ */
+class TripDatabase private constructor(context: Context) :
     SQLiteOpenHelper(context, DB_NAME, null, DB_VERSION) {
+
+    init {
+        setWriteAheadLoggingEnabled(true)
+    }
+
+    /** Общий helper не закрывается (см. комментарий к классу). */
+    @Synchronized
+    override fun close() { /* no-op */ }
 
     companion object {
         private const val TAG = "TripDatabase"
+
+        @Volatile
+        private var instance: TripDatabase? = null
+
+        fun get(context: Context): TripDatabase =
+            instance ?: synchronized(this) {
+                instance ?: TripDatabase(context.applicationContext).also { instance = it }
+            }
+
         private const val DB_NAME = "trips.db"
-        private const val DB_VERSION = 2     // ← было 1, стало 2 (добавили chargings)
+        private const val DB_VERSION = 3     // v2 → chargings, v3 → km_per_pct + route_profile
 
         // ── Trips ──
         const val TABLE = "trips"
@@ -36,6 +65,7 @@ class TripDatabase(context: Context) :
         const val COL_START_LON = "start_lon"
         const val COL_END_LAT = "end_lat"
         const val COL_END_LON = "end_lon"
+        const val COL_ROUTE_PROFILE = "route_profile"   // v3
 
         // ── Chargings ──
         const val TABLE_CHARGING = "chargings"
@@ -43,13 +73,13 @@ class TripDatabase(context: Context) :
         const val CH_STARTED_AT = "started_at"
         const val CH_ENDED_AT = "ended_at"
         const val CH_DURATION_MIN = "duration_min"
-        const val CH_AC_DC = "ac_dc"                       // "AC" / "DC"
-        const val CH_ENERGY_VEHICLE = "energy_vehicle_kwh"  // приняла машина
-        const val CH_ENERGY_STATION = "energy_station_kwh"  // отдала станция
-        const val CH_BMS_START = "bms_counter_start"        // lifetimeKwh при старте
-        const val CH_BMS_END = "bms_counter_end"            // lifetimeKwh при финише
-        const val CH_CELLTEMP_START = "cell_temp_start_c"   // средняя по ячейкам в начале
-        const val CH_CELLTEMP_END = "cell_temp_end_c"       // средняя по ячейкам в конце
+        const val CH_AC_DC = "ac_dc"
+        const val CH_ENERGY_VEHICLE = "energy_vehicle_kwh"
+        const val CH_ENERGY_STATION = "energy_station_kwh"
+        const val CH_BMS_START = "bms_counter_start"
+        const val CH_BMS_END = "bms_counter_end"
+        const val CH_CELLTEMP_START = "cell_temp_start_c"
+        const val CH_CELLTEMP_END = "cell_temp_end_c"
         const val CH_TEMP_OUTSIDE_START = "temp_outside_start_c"
         const val CH_TEMP_OUTSIDE_END = "temp_outside_end_c"
         const val CH_LOCATION = "location"
@@ -59,6 +89,20 @@ class TripDatabase(context: Context) :
         const val CH_START_SOC = "start_soc"
         const val CH_END_SOC = "end_soc"
         const val CH_NOTES = "notes"
+
+        // ── KmPerPct (v3) ──
+        const val TABLE_KMPCT = "km_per_pct"
+        const val KP_ID = "id"
+        const val KP_TRIP_ID = "trip_id"
+        const val KP_ENDED_AT = "ended_at"
+        const val KP_DISTANCE_KM = "distance_km"
+        const val KP_KM_PER_PCT = "km_per_pct"
+        const val KP_KM_PER_PCT_NORM = "km_per_pct_norm"
+        const val KP_TEMP_C = "temp_c"
+        const val KP_SPEED_KMH = "speed_kmh"
+        const val KP_PROFILE = "profile"
+        const val KP_SOC_AVG = "soc_avg"
+        const val KP_SOC_DELTA = "soc_delta"
 
         private const val CREATE_TRIPS = """
             CREATE TABLE $TABLE (
@@ -82,7 +126,8 @@ class TripDatabase(context: Context) :
                 $COL_START_LAT       REAL,
                 $COL_START_LON       REAL,
                 $COL_END_LAT         REAL,
-                $COL_END_LON         REAL
+                $COL_END_LON         REAL,
+                $COL_ROUTE_PROFILE   TEXT
             )
         """
 
@@ -111,6 +156,22 @@ class TripDatabase(context: Context) :
             )
         """
 
+        private const val CREATE_KMPCT = """
+            CREATE TABLE $TABLE_KMPCT (
+                $KP_ID              INTEGER PRIMARY KEY AUTOINCREMENT,
+                $KP_TRIP_ID         INTEGER NOT NULL,
+                $KP_ENDED_AT        INTEGER NOT NULL,
+                $KP_DISTANCE_KM     REAL NOT NULL,
+                $KP_KM_PER_PCT      REAL NOT NULL,
+                $KP_KM_PER_PCT_NORM REAL NOT NULL,
+                $KP_TEMP_C          REAL NOT NULL,
+                $KP_SPEED_KMH       REAL NOT NULL,
+                $KP_PROFILE         TEXT NOT NULL DEFAULT 'UNKNOWN',
+                $KP_SOC_AVG         REAL NOT NULL,
+                $KP_SOC_DELTA       INTEGER NOT NULL
+            )
+        """
+
         private const val CREATE_INDEX_TRIPS_STARTED =
             "CREATE INDEX idx_trips_started ON $TABLE($COL_STARTED_AT)"
         private const val CREATE_INDEX_TRIPS_FINISHED =
@@ -120,6 +181,11 @@ class TripDatabase(context: Context) :
 
         private const val CREATE_INDEX_CHARGING_STARTED =
             "CREATE INDEX idx_charging_started ON $TABLE_CHARGING($CH_STARTED_AT)"
+
+        private const val CREATE_INDEX_KMPCT_ENDED =
+            "CREATE INDEX idx_kmpct_ended ON $TABLE_KMPCT($KP_ENDED_AT)"
+        private const val CREATE_INDEX_KMPCT_PROFILE =
+            "CREATE INDEX idx_kmpct_profile ON $TABLE_KMPCT($KP_PROFILE, $KP_ENDED_AT)"
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -131,12 +197,15 @@ class TripDatabase(context: Context) :
 
         db.execSQL(CREATE_CHARGINGS)
         db.execSQL(CREATE_INDEX_CHARGING_STARTED)
+
+        db.execSQL(CREATE_KMPCT)
+        db.execSQL(CREATE_INDEX_KMPCT_ENDED)
+        db.execSQL(CREATE_INDEX_KMPCT_PROFILE)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         Log.w(TAG, "onUpgrade: $oldVersion -> $newVersion")
 
-        // v1 → v2: добавляем таблицу chargings, не трогаем trips
         if (oldVersion < 2) {
             try {
                 db.execSQL(CREATE_CHARGINGS)
@@ -144,10 +213,33 @@ class TripDatabase(context: Context) :
                 Log.i(TAG, "Added chargings table")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to create chargings table", e)
-                // На всякий случай пересоздаём только chargings
                 db.execSQL("DROP TABLE IF EXISTS $TABLE_CHARGING")
                 db.execSQL(CREATE_CHARGINGS)
                 db.execSQL(CREATE_INDEX_CHARGING_STARTED)
+            }
+        }
+
+        if (oldVersion < 3) {
+            // km_per_pct
+            try {
+                db.execSQL(CREATE_KMPCT)
+                db.execSQL(CREATE_INDEX_KMPCT_ENDED)
+                db.execSQL(CREATE_INDEX_KMPCT_PROFILE)
+                Log.i(TAG, "Added km_per_pct table")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create km_per_pct table", e)
+                db.execSQL("DROP TABLE IF EXISTS $TABLE_KMPCT")
+                db.execSQL(CREATE_KMPCT)
+                db.execSQL(CREATE_INDEX_KMPCT_ENDED)
+                db.execSQL(CREATE_INDEX_KMPCT_PROFILE)
+            }
+
+            // trips.route_profile
+            try {
+                db.execSQL("ALTER TABLE $TABLE ADD COLUMN $COL_ROUTE_PROFILE TEXT")
+                Log.i(TAG, "Added trips.route_profile column")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to add route_profile column", e)
             }
         }
     }

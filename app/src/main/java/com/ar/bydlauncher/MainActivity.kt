@@ -53,6 +53,8 @@ import com.ar.bydlauncher.byd.RouteProfileDetector
 import com.ar.bydlauncher.byd.CalibrationRepository
 import com.ar.bydlauncher.scenario.ScenarioEngine
 import com.ar.bydlauncher.scenario.ScenarioSettingsRepository
+import com.ar.bydlauncher.db.KmPerPctRepository
+import com.ar.bydlauncher.db.BaseConsumptionRepository
 
 class MainActivity : Activity() {
 
@@ -126,10 +128,13 @@ class MainActivity : Activity() {
     private val rangeEstimator = RangeEstimator()
     private val routeProfileDetector = RouteProfileDetector()
     private lateinit var calibrationRepo: CalibrationRepository
+    private lateinit var bmsKmPerPctTrendIcon: ImageView
 
     // ── Сценарии ──
     private lateinit var scenarioSettings: ScenarioSettingsRepository
     private lateinit var scenarioEngine: ScenarioEngine
+    private lateinit var kmPerPctRepo: KmPerPctRepository
+    private lateinit var baseConsumptionRepo: BaseConsumptionRepository
 
     @Volatile
     private var lastEstimatedConsumption: Double = 0.0
@@ -262,6 +267,7 @@ class MainActivity : Activity() {
         bmsTripConsumption = findViewById(R.id.bmsTripConsumption)
         bmsTripEnergy      = findViewById(R.id.bmsTripEnergy)
         bmsFullRange       = findViewById(R.id.bmsFullRange)
+        bmsKmPerPctTrendIcon = findViewById(R.id.bmsKmPerPctTrendIcon)
 
         // ── Кликабельные контейнеры ──
         weatherCard    = findViewById(R.id.weatherCard)
@@ -356,6 +362,8 @@ class MainActivity : Activity() {
         tripRepository = TripRepository(this)
         calibrationRepo = CalibrationRepository(this)
         chargingRepository = ChargingRepository(this)
+        kmPerPctRepo = KmPerPctRepository(this)
+        baseConsumptionRepo = BaseConsumptionRepository(this)
 
         // ── Сценарии ──
         scenarioSettings = ScenarioSettingsRepository(this)
@@ -370,19 +378,23 @@ class MainActivity : Activity() {
                         val fallbackEnd = o.endedAt
                             ?: (o.startedAt + maxOf(o.durationMin * 60_000L, 60_000L))
 
-                        tripRepository.finish(o.id, TripRecord(
+                        val rec = TripRecord(
+                            id = o.id,
                             startedAt = o.startedAt,
                             endedAt = fallbackEnd,
                             finished = true,
+                            startSoc = o.startSoc,
+                            endSoc = o.endSoc,
+                            startOdometerKm = o.startOdometerKm,
+                            endOdometerKm = o.endOdometerKm,
                             distanceKm = o.distanceKm,
                             durationMin = o.durationMin,
                             energyKwh = o.energyKwh,
                             consumption = o.consumption,
-                            startSoc = o.startSoc,
-                            endSoc = o.endSoc,
-                            startOdometerKm = o.startOdometerKm,
-                            endOdometerKm = o.endOdometerKm
-                        ))
+                            routeProfile = o.routeProfile
+                        )
+                        tripRepository.finish(o.id, rec)
+                        kmPerPctRepo.recordTrip(rec)
                         Log.w(TAG, "Closed orphan id=${o.id}, endedAt=$fallbackEnd")
                     }
                 }
@@ -1116,6 +1128,13 @@ class MainActivity : Activity() {
                     Log.w(TAG, "BMS read failed ($fails/$MAX_CONSECUTIVE_FAILURES)")
                     if (fails >= MAX_CONSECUTIVE_FAILURES) {
                         Log.w(TAG, "Потеряна связь с ADB. Переподключение...")
+                        if (::scenarioEngine.isInitialized) {
+                            // Вернуть ДХО, если выключили мы. ADB ещё жив. Поток нужен, чтобы
+                            // не делать блокирующий ADB-вызов на главном потоке.
+                            val t = Thread { runCatching { scenarioEngine.resetAll() } }
+                            t.start()
+                            t.join(1500)
+                        }
                         adb.disconnect()
                         break@pollLoop
                     }
@@ -1258,6 +1277,16 @@ class MainActivity : Activity() {
         bmsRouteProfileBadge.setBackgroundResource(bgRes)
         bmsRouteProfileBadge.setTextColor(badgeColor)
 
+        // ═══ Эмпирика км/% и базовый расход ═══
+        val kmPerPctNorm = kmPerPctRepo.getNormalized(routeProfile)
+        val kmPerPctWeekAvg = kmPerPctRepo.getSmoothedKmPerPct()
+        val now = System.currentTimeMillis()
+        val kmPerPctPrevWeekAvg = kmPerPctRepo.getAvgForWindow(
+            now - 14L * 24 * 3600_000L,
+            now -  7L * 24 * 3600_000L
+        )
+        val baseRecent = baseConsumptionRepo.getRecentBase()
+
         val est = rangeEstimator.estimate(
             socPercent        = s.socPercent ?: 0f,
             sohPercent        = s.sohPercent,
@@ -1268,14 +1297,41 @@ class MainActivity : Activity() {
             weather           = lastWeather,
             carBearing        = carBearing,
             routeProfile      = routeProfile,
-            calibrationFactor = calibrationFactor
+            calibrationFactor = calibrationFactor,
+            kmPerPctNorm        = kmPerPctNorm,
+            kmPerPctWeekAvg     = kmPerPctWeekAvg,
+            kmPerPctPrevWeekAvg = kmPerPctPrevWeekAvg,
+            baseRecent          = baseRecent
         )
 
         lastEstimatedConsumption = est.consumption
 
-        bmsRange.text    = est.mainKm.toString()
-        bmsRangeMax.text = est.maxKm.toString()
-        bmsRangeMin.text = est.minKm.toString()
+        bmsRange.text = est.mainKm.toString()
+
+        // ── км/% (текущий) ──
+        bmsRangeMax.text = est.kmPerPctCurrent?.let {
+            String.format(Locale.US, "%.1f", it)
+        } ?: "—"
+
+        // ── среднее за неделю (без стрелки в тексте) ──
+        bmsRangeMin.text = est.kmPerPctWeekAvg?.let {
+            String.format(Locale.US, "%.1f", it)
+        } ?: "—"
+
+        // ── иконка тренда ──
+        val trendColor = when (est.kmPerPctTrend) {
+            RangeEstimator.Trend.UP   -> 0xFF28C76F.toInt()
+            RangeEstimator.Trend.DOWN -> 0xFFEA5455.toInt()
+            RangeEstimator.Trend.FLAT -> 0xFFB0B4BD.toInt()
+        }
+        bmsRangeMin.setTextColor(trendColor)
+
+        val trendIconRes = when (est.kmPerPctTrend) {
+            RangeEstimator.Trend.UP   -> R.drawable.ic_trend_up
+            RangeEstimator.Trend.DOWN -> R.drawable.ic_trend_down
+            RangeEstimator.Trend.FLAT -> R.drawable.ic_trend_flat
+        }
+        bmsKmPerPctTrendIcon.setImageResource(trendIconRes)
 
         bmsRange.setTextColor(
             if (est.heaterWarning) COLOR_WARN else COLOR_NEUTRAL
@@ -1303,12 +1359,9 @@ class MainActivity : Activity() {
             )
         }
 
-        if (est.factors.isNotEmpty()) {
-            val factorStr = est.factors.joinToString(" · ") {
-                "${it.percent}% ${it.label}"
-            }
-            Log.i(TAG, "Range factors: $factorStr (main=${est.mainKm}, cons=${String.format(Locale.US, "%.2f", est.consumption)})")
-        }
+        Log.i(TAG, "Range: main=${est.mainKm} км/%=${est.kmPerPctCurrent} " +
+                "week=${est.kmPerPctWeekAvg} trend=${est.kmPerPctTrend} " +
+                "source=${est.source} cons=${String.format(Locale.US, "%.2f", est.consumption)}")
 
         bmsCellMax.text = s.maxCellV?.let { String.format(Locale.US, "%.3f", it) } ?: "—"
         bmsCellMin.text = s.minCellV?.let { String.format(Locale.US, "%.3f", it) } ?: "—"
@@ -1388,6 +1441,7 @@ class MainActivity : Activity() {
             tempInsideC = s.tempInsideC,
             battTempC = s.maxBatTempC,
             driverBeltBuckled = s.driverBeltBuckled,
+            routeProfile = routeProfileDetector.getProfile()
         )
 
         lastTripState = trip
@@ -1458,9 +1512,14 @@ class MainActivity : Activity() {
             if (id != null) {
                 val loc = lastKnownLocation
                 val record = TripRecord(
+                    id = id,
                     startedAt = trip.startedAt,
                     endedAt = trip.endedAt,
                     finished = true,
+                    startSoc = trip.startSoc,
+                    endSoc = trip.endSoc,
+                    startOdometerKm = trip.startOdometerKm,
+                    endOdometerKm = trip.endOdometerKm,
                     distanceKm = trip.distanceKm,
                     durationMin = trip.durationMin,
                     energyKwh = trip.energyKwh,
@@ -1470,10 +1529,9 @@ class MainActivity : Activity() {
                     outsideTempAvgC = trip.outsideTempAvgC,
                     insideTempAvgC = trip.insideTempAvgC,
                     battTempAvgC = trip.battTempAvgC,
-                    endSoc = trip.endSoc,
-                    endOdometerKm = trip.endOdometerKm,
                     endLat = loc?.latitude,
-                    endLon = loc?.longitude
+                    endLon = loc?.longitude,
+                    routeProfile = trip.routeProfile
                 )
 
                 val predictedForCalibration = lastEstimatedConsumption
@@ -1497,6 +1555,13 @@ class MainActivity : Activity() {
                 scope.launch {
                     tripRepository.finish(id, record)
                     Log.i(TAG, "Trip finished in DB, id=$id")
+
+                    // ── Записываем эмпирику км/% ──
+                    try {
+                        kmPerPctRepo.recordTrip(record)
+                    } catch (t: Throwable) {
+                        Log.e(TAG, "kmPerPctRepo.recordTrip failed", t)
+                    }
 
                     val summary = tripRepository.getTodaySummary()
                     withContext(Dispatchers.Main) { updateDaySummaryUi(summary) }
@@ -1538,7 +1603,13 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         runCatching { captionMask.hide() }
             .onFailure { Log.w(TAG, "captionMask.hide failed: ${it.message}") }
-
+        if (::scenarioEngine.isInitialized) {
+            // Вернуть ДХО, если выключили мы. ADB ещё жив. Поток нужен, чтобы
+            // не делать блокирующий ADB-вызов на главном потоке.
+            val t = Thread { runCatching { scenarioEngine.resetAll() } }
+            t.start()
+            t.join(1500)
+        }
         scope.cancel()
 
         runCatching { gpsReadySignal.close() }

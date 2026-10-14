@@ -13,6 +13,7 @@
     <uses-permission android:name="android.permission.INJECT_EVENTS" />
 
     <application
+        android:name=".App"
         android:label="BYD Launcher"
         android:allowBackup="true"
         android:usesCleartextTraffic="true"
@@ -118,4 +119,5 @@
         </receiver>
 
     </application>
+
 </manifest>

@@ -2,36 +2,11 @@ package com.ar.bydlauncher.byd
 
 import android.util.Log
 
-/**
- * Определяет начало и конец поездки.
- *
- * СТАРТ  (все три условия в одном снапшоте):
- *   • селектор КПП не в P;
- *   • ремень водителя пристёгнут;
- *   • скорость ≥ START_SPEED_KMH (вместо педали газа: FID педали на этой машине не читается).
- *
- * КОНЕЦ:
- *   • селектор КПП в P и ремень водителя отстёгнут → запускается таймер STOP_HOLD_MS (5 мин)
- *     от момента отстёгивания;
- *   • если за это время ремень снова пристегнули или селектор ушёл из P — таймер сбрасывается,
- *     поездка продолжается;
- *   • по истечении таймера поездка закрывается. В итоговые значения (пробег, кВт·ч, SOC,
- *     длительность, endedAt) попадает состояние на МОМЕНТ ОТСТЁГИВАНИЯ, а не +5 минут —
- *     простой с работающим климатом в расход поездки не входит.
- *
- * Значение null («неизвестно», например ремень не читается при выключенном зажигании)
- * таймер не сбрасывает и конец поездки не запускает.
- *
- * Пока идёт таймер, TripState.endPendingSince != null, а distance/energy/duration заморожены —
- * вызывающий код может сразу записать их в БД: если ГУ уснёт раньше 5 минут, поездка закроется
- * по этим данным как «осиротевшая».
- */
 class TripDetector {
 
     companion object {
         private const val TAG = "TripDetector"
         const val GEAR_P = 1
-        /** Порог начала движения. Скорость читается надёжно (Statistic), в отличие от педали. */
         const val START_SPEED_KMH = 3f
         const val STOP_HOLD_MS = 5 * 60_000L
     }
@@ -39,9 +14,7 @@ class TripDetector {
     data class TripState(
         val active: Boolean,
         val startedAt: Long = 0L,
-        /** Заполняется только в состоянии, закрывающем поездку (active = false). */
         val endedAt: Long? = null,
-        /** Момент отстёгивания ремня, если идёт 5-минутный таймер конца; иначе null. */
         val endPendingSince: Long? = null,
         val distanceKm: Double = 0.0,
         val energyKwh: Double = 0.0,
@@ -55,32 +28,28 @@ class TripDetector {
         val startOdometerKm: Double? = null,
         val endOdometerKm: Double? = null,
         val startSoc: Int? = null,
-        val endSoc: Int? = null
+        val endSoc: Int? = null,
+        val routeProfile: RouteProfile = RouteProfile.UNKNOWN   // ← НОВОЕ
     )
 
-    // ── Состояние активной поездки (startTs == 0 → поездки нет) ──
     private var startTs = 0L
     private var startMileage = 0.0
-    private var startKwh: Double? = null   // null — счётчик кВт·ч недоступен: энергия поездки = 0
+    private var startKwh: Double? = null
     private var startSoc: Int? = null
 
-    // ── Таймер конца (pendingSince == 0 → не запущен) + замороженный снимок ──
     private var pendingSince = 0L
     private var pendMileage = 0.0
     private var pendKwh: Double? = null
     private var pendSoc: Int? = null
 
-    // ── Последние валидные значения (null в снапшоте не превращается в 0) ──
     private var lastMileage: Double? = null
     private var lastKwh: Double? = null
     private var lastSoc: Int? = null
 
-    /** Для экрана: почему поездка не стартует / в каком состоянии таймер конца. */
     @Volatile
     var lastDiag: String = ""
         private set
 
-    // ── Накопители статистики ──
     private var sampleCount = 0
     private var speedSum = 0.0
     private var maxSpeed = 0.0
@@ -101,7 +70,8 @@ class TripDetector {
         tempOutsideC: Int?,
         tempInsideC: Int?,
         battTempC: Int?,
-        driverBeltBuckled: Boolean?
+        driverBeltBuckled: Boolean?,
+        routeProfile: RouteProfile = RouteProfile.UNKNOWN   // ← НОВОЕ
     ): TripState {
         mileageKm?.let { lastMileage = it.toDouble() }
         lifetimeKwh?.let { lastKwh = it.toDouble() }
@@ -110,7 +80,6 @@ class TripDetector {
         val inP = gearMode == GEAR_P
         val notP = gearMode != null && gearMode != GEAR_P
 
-        // ── Поездки нет: ждём старта ─────────────────────────
         if (startTs == 0L) {
             val mileage = lastMileage
             val kwh = lastKwh
@@ -118,9 +87,6 @@ class TripDetector {
                     driverBeltBuckled == true &&
                     (speedKmh ?: 0f) >= START_SPEED_KMH
 
-            // Без валидного пробега не стартуем — иначе база = 0 и первая нормальная
-            // выборка даст «поездку» в тысячи километров. Счётчик кВт·ч может быть null:
-            // тогда поездка пишется, но энергия и расход остаются 0.
             lastDiag = "старт: КПП≠P=%s ремень=%s скорость=%s(≥%.0f:%s) пробег=%s кВт·ч=%s".format(
                 notP, driverBeltBuckled, speedKmh, START_SPEED_KMH,
                 (speedKmh ?: 0f) >= START_SPEED_KMH, mileage != null, kwh != null)
@@ -139,10 +105,9 @@ class TripDetector {
                 Log.i(TAG, "Trip started: gear=$gearMode belt=$driverBeltBuckled " +
                         "speed=$speedKmh soc=$startSoc odo=$startMileage")
             }
-            return buildState(ts)
+            return buildState(ts, routeProfile)
         }
 
-        // ── Поездка идёт ─────────────────────────────────────
         lastDiag = if (pendingSince == 0L) "идёт" else
             "идёт, таймер конца %d с".format((ts - pendingSince) / 1000)
         if (pendingSince == 0L) {
@@ -158,7 +123,6 @@ class TripDetector {
         }
 
         val endCond = inP && driverBeltBuckled == false
-        // Явные признаки того, что поездка продолжается. null таймер не сбрасывает.
         val resumeCond = notP || driverBeltBuckled == true
 
         if (pendingSince == 0L) {
@@ -174,7 +138,7 @@ class TripDetector {
                 Log.i(TAG, "End timer cancelled: gear=$gearMode belt=$driverBeltBuckled")
                 pendingSince = 0L
             } else if (ts - pendingSince >= STOP_HOLD_MS) {
-                val closing = buildState(ts).copy(
+                val closing = buildState(ts, routeProfile).copy(
                     active = false,
                     endedAt = pendingSince,
                     endPendingSince = null
@@ -188,7 +152,7 @@ class TripDetector {
             }
         }
 
-        return buildState(ts)
+        return buildState(ts, routeProfile)
     }
 
     private fun reset() {
@@ -196,8 +160,8 @@ class TripDetector {
         pendingSince = 0L
     }
 
-    private fun buildState(ts: Long): TripState {
-        if (startTs == 0L) return TripState(active = false)
+    private fun buildState(ts: Long, routeProfile: RouteProfile): TripState {
+        if (startTs == 0L) return TripState(active = false, routeProfile = routeProfile)
 
         val frozen = pendingSince != 0L
         val endTs = if (frozen) pendingSince else ts
@@ -232,7 +196,8 @@ class TripDetector {
             startOdometerKm = startMileage,
             endOdometerKm = endMileage,
             startSoc = startSoc,
-            endSoc = endSoc
+            endSoc = endSoc,
+            routeProfile = routeProfile
         )
     }
 }

@@ -23,4 +23,5 @@
     <color name="glass_active">#0FFFFFFF</color>
     <color name="stroke_glass">#0FFFFFFF</color>
     <color name="stroke_active">#33FFFFFF</color>
+    <color name="c_transparent">#00000000</color>
 </resources>

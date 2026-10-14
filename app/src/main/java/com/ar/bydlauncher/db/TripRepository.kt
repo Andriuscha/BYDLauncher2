@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
 import android.util.Log
+import com.ar.bydlauncher.byd.RouteProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Calendar
@@ -29,12 +30,13 @@ data class TripRecord(
     val startLat: Double? = null,
     val startLon: Double? = null,
     val endLat: Double? = null,
-    val endLon: Double? = null
+    val endLon: Double? = null,
+    val routeProfile: RouteProfile? = null
 )
 
 class TripRepository(context: Context) {
 
-    private val db = TripDatabase(context.applicationContext)
+    private val db = TripDatabase.get(context)
 
     companion object {
         private const val TAG = "TripRepository"
@@ -75,13 +77,15 @@ class TripRepository(context: Context) {
                 record.endLon?.let { put(TripDatabase.COL_END_LON, it) }
                 record.endSoc?.let { put(TripDatabase.COL_END_SOC, it) }
                 record.endOdometerKm?.let { put(TripDatabase.COL_END_ODO, it) }
+                record.routeProfile?.let { put(TripDatabase.COL_ROUTE_PROFILE, it.name) }
                 val pendingEnd = record.endedAt
                 if (pendingEnd != null) put(TripDatabase.COL_ENDED_AT, pendingEnd)
                 else putNull(TripDatabase.COL_ENDED_AT)
             }
             val rows = db.writableDatabase.update(
                 TripDatabase.TABLE, cv,
-                "${TripDatabase.COL_ID} = ?", arrayOf(id.toString())
+                "${TripDatabase.COL_ID} = ? AND ${TripDatabase.COL_FINISHED} = 0",
+                arrayOf(id.toString())
             )
             Log.i(TAG, "updateLive: id=$id, rows=$rows")
         } catch (t: Throwable) {
@@ -107,6 +111,7 @@ class TripRepository(context: Context) {
                 record.battTempAvgC?.let { put(TripDatabase.COL_BATT_TEMP, it) }
                 record.endLat?.let { put(TripDatabase.COL_END_LAT, it) }
                 record.endLon?.let { put(TripDatabase.COL_END_LON, it) }
+                record.routeProfile?.let { put(TripDatabase.COL_ROUTE_PROFILE, it.name) }
             }
             val rows = db.writableDatabase.update(
                 TripDatabase.TABLE, cv,
@@ -168,10 +173,33 @@ class TripRepository(context: Context) {
     }
 
     /**
-     * Суммарные данные за "текущий день".
-     * День = с 06:00 текущего дня до 05:59 следующего дня.
-     * Если сейчас < 06:00 — считаем "сегодня" с 06:00 вчера.
+     * Последние N завершённых поездок с минимальной длиной — для BaseConsumptionRepository.
      */
+    suspend fun getRecentFinished(
+        fromMs: Long,
+        minKm: Double,
+        limit: Int
+    ): List<TripRecord> = withContext(Dispatchers.IO) {
+        val list = mutableListOf<TripRecord>()
+        try {
+            db.readableDatabase.query(
+                TripDatabase.TABLE, null,
+                "${TripDatabase.COL_FINISHED} = 1 " +
+                        "AND ${TripDatabase.COL_ENDED_AT} >= ? " +
+                        "AND ${TripDatabase.COL_DISTANCE} >= ?",
+                arrayOf(fromMs.toString(), minKm.toString()),
+                null, null,
+                "${TripDatabase.COL_ENDED_AT} DESC",
+                limit.toString()
+            ).use { c ->
+                while (c.moveToNext()) list.add(cursorToRecord(c))
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "getRecentFinished failed: ${t.javaClass.simpleName}: ${t.message}", t)
+        }
+        list
+    }
+
     suspend fun getTodaySummary(now: Long = System.currentTimeMillis()): TripDaySummary =
         withContext(Dispatchers.IO) {
             try {
@@ -190,7 +218,6 @@ class TripRepository(context: Context) {
                 AND ${TripDatabase.COL_DISTANCE} > 0.5
                 """.trimIndent()
 
-                // Ровно 2 аргумента под 2 placeholder'а в SQL. Не добавлять третий!
                 val args = arrayOf(startOfDay.toString(), endOfDay.toString())
 
                 db.readableDatabase.rawQuery(sql, args).use { c ->
@@ -232,10 +259,6 @@ class TripRepository(context: Context) {
             }
         }
 
-    /**
-     * Начало "текущего дня": если сейчас >= 06:00 — сегодня 06:00,
-     * если сейчас < 06:00 — вчера 06:00.
-     */
     private fun computeDayStart(now: Long): Long {
         val cal = Calendar.getInstance()
         cal.timeInMillis = now
@@ -263,6 +286,16 @@ class TripRepository(context: Context) {
             val idx = c.getColumnIndex(col)
             return if (idx >= 0 && !c.isNull(idx)) c.getInt(idx) else null
         }
+        fun getStringOrNull(col: String): String? {
+            val idx = c.getColumnIndex(col)
+            return if (idx >= 0 && !c.isNull(idx)) c.getString(idx) else null
+        }
+
+        val profileRaw = getStringOrNull(TripDatabase.COL_ROUTE_PROFILE)
+        val profile = profileRaw?.let {
+            runCatching { RouteProfile.valueOf(it) }.getOrNull()
+        }
+
         return TripRecord(
             id = c.getLong(c.getColumnIndexOrThrow(TripDatabase.COL_ID)),
             startedAt = c.getLong(c.getColumnIndexOrThrow(TripDatabase.COL_STARTED_AT)),
@@ -284,7 +317,8 @@ class TripRepository(context: Context) {
             startLat = getDoubleOrNull(TripDatabase.COL_START_LAT),
             startLon = getDoubleOrNull(TripDatabase.COL_START_LON),
             endLat = getDoubleOrNull(TripDatabase.COL_END_LAT),
-            endLon = getDoubleOrNull(TripDatabase.COL_END_LON)
+            endLon = getDoubleOrNull(TripDatabase.COL_END_LON),
+            routeProfile = profile
         )
     }
 

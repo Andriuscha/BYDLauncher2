@@ -45,6 +45,8 @@ dependencies {
     implementation("io.coil-kt:coil-svg:2.6.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.appcompat:appcompat-resources:1.7.1")  // для tint на старых API
+    // ═══ RecyclerView ═══
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
 
     // Stub для android.app.ActivityView (@TestApi).
     // compileOnly — классы stubs НЕ попадут в APK,

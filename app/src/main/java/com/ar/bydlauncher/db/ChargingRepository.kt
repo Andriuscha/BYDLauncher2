@@ -9,7 +9,7 @@ import kotlinx.coroutines.withContext
 
 class ChargingRepository(context: Context) {
 
-    private val db = TripDatabase(context.applicationContext)
+    private val db = TripDatabase.get(context)
 
     companion object {
         private const val TAG = "ChargingRepository"

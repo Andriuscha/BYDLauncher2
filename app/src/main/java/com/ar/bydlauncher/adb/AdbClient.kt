@@ -1,6 +1,7 @@
 package com.ar.bydlauncher.adb
 
 import android.content.Context
+import android.os.Looper
 import android.util.Base64
 import android.util.Log
 import java.io.File
@@ -22,6 +23,7 @@ import java.util.Arrays
 
 class AdbClient(private val context: Context) {
 
+    @Volatile
     private var socket: Socket? = null
     private var input: InputStream? = null
     private var output: OutputStream? = null
@@ -74,12 +76,11 @@ class AdbClient(private val context: Context) {
         fun get(context: Context): AdbClient {
             var c = instance
             if (c == null) {
+                // Только создаём. Подключение — отдельно (ensureConnected /
+                // connectWithRetry в фоне): get() часто зовут из onCreate на главном
+                // потоке, а connect() — блокирующая сеть (до 60 с на первом
+                // подтверждении ключа) и держал бы монитор компаньона.
                 c = AdbClient(context.applicationContext)
-                try {
-                    c.connect()
-                } catch (t: Throwable) {
-                    Log.e(TAG, "AdbClient.get: connect failed", t)
-                }
                 instance = c
             }
             return c
@@ -89,10 +90,16 @@ class AdbClient(private val context: Context) {
         fun ensureConnected(context: Context): AdbClient {
             val c = get(context)
             if (!c.isConnected()) {
-                try {
-                    c.connect()
-                } catch (t: Throwable) {
-                    Log.e(TAG, "ensureConnected: connect failed", t)
+                if (Looper.myLooper() == Looper.getMainLooper()) {
+                    // Сеть на главном потоке запрещена. Соединение поднимет цикл опроса
+                    // или первая же shell()-команда (retry-on-reconnect).
+                    Log.w(TAG, "ensureConnected: главный поток — подключение отложено")
+                } else {
+                    try {
+                        c.connect()
+                    } catch (t: Throwable) {
+                        Log.e(TAG, "ensureConnected: connect failed", t)
+                    }
                 }
             }
             return c
@@ -108,7 +115,18 @@ class AdbClient(private val context: Context) {
     //  Connect / Disconnect
     // ═══════════════════════════════════════════════
 
-    fun connect(): Boolean = synchronized(connectLock) {
+    /**
+     * Подключается, если ещё не подключены. Порядок блокировок везде один:
+     * shellLock -> connectLock. Раньше connect() не брал shellLock и, будучи
+     * вызван из другого потока (цикл опроса в MainActivity), закрывал сокет прямо
+     * посреди shell() другой Activity, а второй одновременный connect() закрывал
+     * только что открытый сокет первого.
+     */
+    fun connect(): Boolean = synchronized(shellLock) {
+        if (isConnected()) true else connectInternal()
+    }
+
+    private fun connectInternal(): Boolean = synchronized(connectLock) {
         // Закроем старый сокет, чтобы не течь
         try { socket?.close() } catch (_: Exception) {}
         socket = null; input = null; output = null
@@ -168,6 +186,11 @@ class AdbClient(private val context: Context) {
         }
     }
 
+    /**
+     * Намеренно БЕЗ shellLock: закрытие сокета из другого потока — способ
+     * оборвать зависший shell(). Общий (singleton) сокет Activity закрывать
+     * не должны — это делает только цикл опроса при потере связи.
+     */
     fun disconnect() = synchronized(connectLock) {
         try { socket?.close() } catch (_: Exception) {}
         socket = null; input = null; output = null

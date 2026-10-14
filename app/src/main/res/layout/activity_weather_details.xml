@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#0A0E18"
     android:orientation="vertical"
     android:padding="20dp">
 
+    <!-- ═══ ШАПКА ═══ -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -19,10 +21,10 @@
             android:layout_weight="1"
             android:fontFamily="monospace"
             android:letterSpacing="0.1"
-            android:text="ПРОГНОЗ ПОГОДЫ"
+            android:text="ПОГОДА НА НЕДЕЛЮ"
             android:textAllCaps="true"
             android:textColor="#FFFFFF"
-            android:textSize="16sp"
+            android:textSize="18sp"
             android:textStyle="bold" />
 
         <TextView
@@ -30,6 +32,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_chip"
+            android:clickable="true"
+            android:focusable="true"
             android:fontFamily="monospace"
             android:letterSpacing="0.1"
             android:paddingHorizontal="20dp"
@@ -41,31 +45,42 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/weatherLocation"
-        android:layout_width="match_parent"
+    <!-- ═══ ЛОКАЦИЯ ═══ -->
+    <LinearLayout
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginBottom="12dp"
-        android:fontFamily="monospace"
-        android:letterSpacing="0.08"
-        android:textAllCaps="true"
-        android:textColor="#B0B4BD"
-        android:textSize="11sp"
-        android:textStyle="bold"
-        android:text="—" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
-    <ScrollView
+        <ImageView
+            android:layout_width="14dp"
+            android:layout_height="14dp"
+            android:layout_marginEnd="6dp"
+            android:src="@drawable/ic_pin"
+            app:tint="@color/c_teal"
+            android:contentDescription="@null" />
+
+        <TextView
+            android:id="@+id/weatherLocation"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.08"
+            android:text="—"
+            android:textAllCaps="true"
+            android:textColor="#B0B4BD"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- ═══ СПИСОК ДНЕЙ ═══ -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/weatherList"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:fillViewport="true"
-        android:scrollbars="none">
-
-        <LinearLayout
-            android:id="@+id/weatherList"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-    </ScrollView>
+        android:clipToPadding="false"
+        android:scrollbars="none" />
 
 </LinearLayout>

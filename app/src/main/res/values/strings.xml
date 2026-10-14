@@ -11,4 +11,9 @@
     <string name="trips_title">Поездки</string>
     <string name="trips_empty">Пока нет завершённых поездок</string>
     <string name="trips_back">Назад</string>
+    <string name="km_per_pct">Километров на 1% заряда</string>
+    <string name="trend">Тренд за неделю</string>
+    <string name="avg_speed">Средняя скорость</string>
+    <string name="range_icon_desc">Прогноз пробега электромобиля</string>
+    <string name="soc_icon_desc">Индикатор здоровья батареи (SOH)</string>Ы
 </resources>

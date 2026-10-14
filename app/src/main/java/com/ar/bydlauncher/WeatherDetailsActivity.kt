@@ -3,43 +3,34 @@ package com.ar.bydlauncher
 import android.app.Activity
 import android.os.Bundle
 import android.util.Log
-import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.LinearLayout
+import android.widget.ImageView
 import android.widget.TextView
-import com.ar.bydlauncher.db.TripRepository
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.ar.bydlauncher.weather.DailyForecast
 import com.ar.bydlauncher.weather.WeatherClient
+import com.ar.bydlauncher.weather.WeatherIconProvider
 import kotlinx.coroutines.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/**
- * Расширенный прогноз погоды на 7 дней.
- *
- * Использует lastKnownLocation, переданную через companion (MainActivity
- * кладёт координаты перед startActivity).
- */
 class WeatherDetailsActivity : Activity() {
 
     companion object {
         private const val TAG = "WeatherDetailsActivity"
 
-        /** Заполняется MainActivity перед запуском. */
-        @Volatile
-        var cachedLat: Double = Double.NaN
-
-        @Volatile
-        var cachedLon: Double = Double.NaN
-
-        @Volatile
-        var cachedLocationName: String? = null
+        @Volatile var cachedLat: Double = Double.NaN
+        @Volatile var cachedLon: Double = Double.NaN
+        @Volatile var cachedLocationName: String? = null
     }
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private lateinit var container: LinearLayout
+    private lateinit var list: RecyclerView
     private lateinit var tvLocation: TextView
 
     private val dateFmt = DateTimeFormatter.ofPattern("EEE, d MMM", Locale("ru"))
@@ -54,8 +45,10 @@ class WeatherDetailsActivity : Activity() {
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         )
 
-        container = findViewById(R.id.weatherList)
+        list = findViewById(R.id.weatherList)
         tvLocation = findViewById(R.id.weatherLocation)
+
+        list.layoutManager = LinearLayoutManager(this)
 
         findViewById<View>(R.id.weatherClose).setOnClickListener { finish() }
 
@@ -81,141 +74,11 @@ class WeatherDetailsActivity : Activity() {
     }
 
     private fun renderDays(days: List<DailyForecast>) {
-        container.removeAllViews()
-
-        days.forEachIndexed { idx, d ->
-            container.addView(buildDayCard(d, isToday = (idx == 0)))
-        }
+        list.adapter = ForecastAdapter(days)
     }
 
     private fun renderError(msg: String) {
-        container.removeAllViews()
-        val tv = TextView(this).apply {
-            text = msg
-            setTextColor(0xFFEA5455.toInt())
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(32), dp(16), dp(32))
-            typeface = android.graphics.Typeface.MONOSPACE
-        }
-        container.addView(tv)
-    }
-
-    private fun buildDayCard(d: DailyForecast, isToday: Boolean): View {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-            background = getDrawable(R.drawable.bg_chip)
-            gravity = Gravity.CENTER_VERTICAL
-
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            lp.bottomMargin = dp(8)
-            layoutParams = lp
-        }
-
-        // ── Левая часть: дата + иконка + описание ──
-        val left = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.2f)
-        }
-
-        val tvDate = TextView(this).apply {
-            val label = when {
-                isToday -> "СЕГОДНЯ"
-                d.date == today.plusDays(1) -> "ЗАВТРА"
-                else -> d.date.format(dateFmt).uppercase()
-            }
-            text = label
-            setTextColor(0xFFFFFFFF.toInt())
-            textSize = 13f
-            typeface = android.graphics.Typeface.MONOSPACE
-            letterSpacing = 0.08f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-        }
-        left.addView(tvDate)
-
-        val tvDesc = TextView(this).apply {
-            text = "${d.icon}  ${d.description}"
-            setTextColor(0xFFB0B4BD.toInt())
-            textSize = 12f
-            typeface = android.graphics.Typeface.MONOSPACE
-            setPadding(0, dp(4), 0, 0)
-        }
-        left.addView(tvDesc)
-
-        root.addView(left)
-
-        // ── Центр: осадки + ветер ──
-        val center = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        val tvPrecip = TextView(this).apply {
-            text = if (d.precipitationMm > 0.1f)
-                "💧 %.1f мм".format(d.precipitationMm)
-            else "—"
-            setTextColor(0xFF2E93FA.toInt())
-            textSize = 12f
-            typeface = android.graphics.Typeface.MONOSPACE
-        }
-        center.addView(tvPrecip)
-
-        val tvWind = TextView(this).apply {
-            text = if (d.windMaxMs > 0.1f)
-                "💨 %.0f м/с".format(d.windMaxMs)
-            else "—"
-            setTextColor(0xFFB0B4BD.toInt())
-            textSize = 12f
-            typeface = android.graphics.Typeface.MONOSPACE
-            setPadding(0, dp(4), 0, 0)
-        }
-        center.addView(tvWind)
-
-        root.addView(center)
-
-        // ── Правая часть: макс/мин ──
-        val right = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        val tvMax = TextView(this).apply {
-            text = "%.0f°".format(d.tempMax)
-            setTextColor(0xFFFF9F43.toInt())
-            textSize = 20f
-            typeface = android.graphics.Typeface.MONOSPACE
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-        }
-        right.addView(tvMax)
-
-        val tvSep = TextView(this).apply {
-            text = " / "
-            setTextColor(0xFFB0B4BD.toInt())
-            textSize = 14f
-            typeface = android.graphics.Typeface.MONOSPACE
-        }
-        right.addView(tvSep)
-
-        val tvMin = TextView(this).apply {
-            text = "%.0f°".format(d.tempMin)
-            setTextColor(0xFF2E93FA.toInt())
-            textSize = 20f
-            typeface = android.graphics.Typeface.MONOSPACE
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-        }
-        right.addView(tvMin)
-
-        root.addView(right)
-
-        return root
+        list.adapter = ErrorAdapter(msg)
     }
 
     override fun onDestroy() {
@@ -223,5 +86,106 @@ class WeatherDetailsActivity : Activity() {
         super.onDestroy()
     }
 
-    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+    // ═══════════════════════════════════════════════════════════════
+    // АДАПТЕР СПИСКА ДНЕЙ
+    // ═══════════════════════════════════════════════════════════════
+    private inner class ForecastAdapter(
+        private val items: List<DailyForecast>
+    ) : RecyclerView.Adapter<ForecastAdapter.VH>() {
+
+        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+            val dayName: TextView     = v.findViewById(R.id.dayName)
+            val icon: ImageView       = v.findViewById(R.id.dayIcon)
+            val cond: TextView        = v.findViewById(R.id.dayCond)
+            val precipIcon: ImageView = v.findViewById(R.id.dayPrecipIcon)
+            val precip: TextView      = v.findViewById(R.id.dayPrecip)
+            val wind: TextView        = v.findViewById(R.id.dayWind)
+            val max: TextView         = v.findViewById(R.id.dayMax)
+            val min: TextView         = v.findViewById(R.id.dayMin)
+            val divider: View         = v.findViewById(R.id.dayDivider)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+            val v = LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_weather_day, parent, false)
+            return VH(v)
+        }
+
+        override fun onBindViewHolder(h: VH, pos: Int) {
+            val d = items[pos]
+            val isToday = pos == 0
+            val isTomorrow = pos == 1
+
+            // ── День недели ──
+            val label = when {
+                isToday    -> "СЕГОДНЯ"
+                isTomorrow -> "ЗАВТРА"
+                else       -> d.date.format(dateFmt).uppercase()
+            }
+            h.dayName.text = label
+            h.dayName.setTextColor(
+                if (isToday) 0xFFFFFFFF.toInt() else 0xFFB0B4BD.toInt()
+            )
+
+            // ── Иконка погоды по WMO-коду ──
+            WeatherIconProvider.load(
+                view  = h.icon,
+                code  = d.weatherCode,
+                isDay = true
+            )
+
+            // ── Описание ──
+            h.cond.text = d.description.uppercase()
+
+            // ── Осадки: показываем только значимые ──
+            if (d.precipitationMm >= 0.5f) {
+                h.precipIcon.visibility = View.VISIBLE
+                h.precip.visibility     = View.VISIBLE
+                h.precip.text = String.format(Locale.US, "%.1f", d.precipitationMm)
+                WeatherIconProvider.loadDrop(h.precipIcon)
+            } else {
+                h.precipIcon.visibility = View.GONE
+                h.precip.visibility     = View.GONE
+                h.precip.text = ""
+            }
+
+            // ── Ветер ──
+            h.wind.text = if (d.windMaxMs > 0.1f)
+                "%.0f м/с".format(d.windMaxMs)
+            else "—"
+
+            // ── Температуры ──
+            h.max.text = "%.0f°".format(d.tempMax)
+            h.min.text = "%.0f°".format(d.tempMin)
+
+            // ── Разделитель: скрываем под последним элементом ──
+            h.divider.visibility =
+                if (pos == items.size - 1) View.GONE else View.VISIBLE
+        }
+
+        override fun getItemCount() = items.size
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // АДАПТЕР ОШИБКИ
+    // ═══════════════════════════════════════════════════════════════
+    private inner class ErrorAdapter(private val msg: String) :
+        RecyclerView.Adapter<ErrorAdapter.VH>() {
+
+        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+            val tv: TextView = v.findViewById(R.id.errorText)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+            val v = LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_weather_error, parent, false)
+            return VH(v)
+        }
+
+        override fun onBindViewHolder(h: VH, position: Int) {
+            h.tv.text = msg
+        }
+
+        override fun getItemCount() = 1
+    }
 }

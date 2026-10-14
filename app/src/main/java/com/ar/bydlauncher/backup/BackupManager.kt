@@ -129,7 +129,7 @@ class BackupManager(private val context: Context) {
 
     private fun collectTrips(): JSONArray {
         val arr = JSONArray()
-        val db = TripDatabase(context.applicationContext)
+        val db = TripDatabase.get(context)
         try {
             db.readableDatabase.query(
                 TripDatabase.TABLE,
@@ -161,7 +161,7 @@ class BackupManager(private val context: Context) {
 
     private fun collectChargings(): JSONArray {
         val arr = JSONArray()
-        val db = TripDatabase(context.applicationContext)
+        val db = TripDatabase.get(context)
         try {
             db.readableDatabase.query(
                 TripDatabase.TABLE_CHARGING,
@@ -260,7 +260,7 @@ class BackupManager(private val context: Context) {
 
     suspend fun readCurrentCounters(): CurrentCounters = withContext(Dispatchers.IO) {
         val tripsCount = try {
-            val db = TripDatabase(context.applicationContext)
+            val db = TripDatabase.get(context)
             val c = db.readableDatabase.rawQuery(
                 "SELECT COUNT(*) FROM ${TripDatabase.TABLE}", null
             )
@@ -271,7 +271,7 @@ class BackupManager(private val context: Context) {
         } catch (_: Exception) { 0 }
 
         val chargingsCount = try {
-            val db = TripDatabase(context.applicationContext)
+            val db = TripDatabase.get(context)
             val c = db.readableDatabase.rawQuery(
                 "SELECT COUNT(*) FROM ${TripDatabase.TABLE_CHARGING}", null
             )
@@ -369,7 +369,7 @@ class BackupManager(private val context: Context) {
 
     private fun applyTrips(arr: JSONArray?): Int {
         if (arr == null) return 0
-        val db = TripDatabase(context.applicationContext)
+        val db = TripDatabase.get(context)
         var count = 0
         try {
             val writable = db.writableDatabase
@@ -408,7 +408,7 @@ class BackupManager(private val context: Context) {
 
     private fun applyChargings(arr: JSONArray?): Int {
         if (arr == null) return 0
-        val db = TripDatabase(context.applicationContext)
+        val db = TripDatabase.get(context)
         var count = 0
         try {
             val writable = db.writableDatabase

@@ -1,5 +1,7 @@
 package com.ar.bydlauncher.db
 
+import com.ar.bydlauncher.byd.RouteProfile
+
 /**
  * Суммарные данные за "текущий день".
  * День = с 06:00 текущего дня до 05:59 следующего дня.
@@ -11,7 +13,8 @@ data class TripDaySummary(
     val energyKwh: Double,
     val durationMin: Int,
     val consumptionKwh100: Double,
-    val tripsCount: Int
+    val tripsCount: Int,
+    val routeProfile: RouteProfile? = null   // задел на будущее
 ) {
     companion object {
         fun empty(startOfDayMs: Long): TripDaySummary = TripDaySummary(
