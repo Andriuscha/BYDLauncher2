@@ -2,9 +2,9 @@ package com.ar.bydlauncher
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.text.InputType
-import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -29,6 +29,9 @@ class ChargingHistoryActivity : Activity() {
 
     companion object {
         private const val TAG = "ChargingHistory"
+        private const val COLOR_DIALOG_BG = 0xFF15233A.toInt() // Тёмно-синий, как в настройках
+        private const val COLOR_DIALOG_TEXT = 0xFFFFFFFF.toInt()
+        private const val COLOR_DIALOG_MUTED = 0xFFB0B4BD.toInt()
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -284,9 +287,10 @@ class ChargingHistoryActivity : Activity() {
         }
 
         val scroll = ScrollView(this).apply {
+            setBackgroundColor(COLOR_DIALOG_BG)
             val tv = TextView(this@ChargingHistoryActivity).apply {
                 text = sb.toString()
-                setTextColor(0xFFFFFFFF.toInt())
+                setTextColor(COLOR_DIALOG_TEXT)
                 textSize = 13f
                 typeface = android.graphics.Typeface.MONOSPACE
                 setPadding(dp(20), dp(16), dp(20), dp(16))
@@ -294,7 +298,7 @@ class ChargingHistoryActivity : Activity() {
             addView(tv)
         }
 
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Детали зарядки")
             .setView(scroll)
             .setPositiveButton("ОК", null)
@@ -304,7 +308,17 @@ class ChargingHistoryActivity : Activity() {
             .setNegativeButton("Удалить") { _, _ ->
                 confirmDelete(r)
             }
-            .show()
+            .create()
+
+        dialog.window?.setBackgroundDrawable(ColorDrawable(COLOR_DIALOG_BG))
+        dialog.show()
+
+        // Перекрашиваем заголовок и кнопки
+        val titleId = resources.getIdentifier("alertTitle", "id", "android")
+        dialog.findViewById<TextView>(titleId)?.setTextColor(COLOR_DIALOG_TEXT)
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(0xFF2E93FA.toInt())
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(0xFF2E93FA.toInt())
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(0xFFEA5455.toInt())
     }
 
     // ==================================================
@@ -315,12 +329,13 @@ class ChargingHistoryActivity : Activity() {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(12), dp(20), dp(12))
+            setBackgroundColor(COLOR_DIALOG_BG)
         }
 
         fun addField(label: String, value: String, numeric: Boolean = false): EditText {
             val tv = TextView(this).apply {
                 text = label
-                setTextColor(0xFFB0B4BD.toInt())
+                setTextColor(COLOR_DIALOG_MUTED)
                 textSize = 11f
                 letterSpacing = 0.1f
                 typeface = android.graphics.Typeface.MONOSPACE
@@ -330,7 +345,7 @@ class ChargingHistoryActivity : Activity() {
 
             val et = EditText(this).apply {
                 setText(value)
-                setTextColor(0xFFFFFFFF.toInt())
+                setTextColor(COLOR_DIALOG_TEXT)
                 textSize = 14f
                 typeface = android.graphics.Typeface.MONOSPACE
                 inputType = if (numeric)
@@ -363,7 +378,7 @@ class ChargingHistoryActivity : Activity() {
         // AC / DC — с пометками
         val tvType = TextView(this).apply {
             text = "Тип зарядки"
-            setTextColor(0xFFB0B4BD.toInt())
+            setTextColor(COLOR_DIALOG_MUTED)
             textSize = 11f
             letterSpacing = 0.1f
             typeface = android.graphics.Typeface.MONOSPACE
@@ -376,12 +391,12 @@ class ChargingHistoryActivity : Activity() {
         }
         val rbAc = RadioButton(this).apply {
             text = "AC (медленная)"
-            setTextColor(0xFFFFFFFF.toInt())
+            setTextColor(COLOR_DIALOG_TEXT)
             isChecked = r.acDc != "DC"
         }
         val rbDc = RadioButton(this).apply {
             text = "DC (быстрая)"
-            setTextColor(0xFFFFFFFF.toInt())
+            setTextColor(COLOR_DIALOG_TEXT)
             isChecked = r.acDc == "DC"
         }
         rgType.addView(rbAc)
@@ -392,7 +407,7 @@ class ChargingHistoryActivity : Activity() {
             addView(container)
         }
 
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Редактировать зарядку")
             .setView(scroll)
             .setPositiveButton("Сохранить") { _, _ ->
@@ -422,11 +437,19 @@ class ChargingHistoryActivity : Activity() {
                 }
             }
             .setNegativeButton("Отмена", null)
-            .show()
+            .create()
+
+        dialog.window?.setBackgroundDrawable(ColorDrawable(COLOR_DIALOG_BG))
+        dialog.show()
+
+        val titleId = resources.getIdentifier("alertTitle", "id", "android")
+        dialog.findViewById<TextView>(titleId)?.setTextColor(COLOR_DIALOG_TEXT)
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(0xFF2E93FA.toInt())
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(0xFFEA5455.toInt())
     }
 
     private fun confirmDelete(r: ChargingRecord) {
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Удалить зарядку?")
             .setMessage(
                 "Запись от ${dateFmt.format(Date(r.startedAt))} " +
@@ -439,7 +462,17 @@ class ChargingHistoryActivity : Activity() {
                 }
             }
             .setNegativeButton("Отмена", null)
-            .show()
+            .create()
+
+        dialog.window?.setBackgroundDrawable(ColorDrawable(COLOR_DIALOG_BG))
+        dialog.show()
+
+        val titleId = resources.getIdentifier("alertTitle", "id", "android")
+        val messageId = resources.getIdentifier("message", "id", "android")
+        dialog.findViewById<TextView>(titleId)?.setTextColor(COLOR_DIALOG_TEXT)
+        dialog.findViewById<TextView>(messageId)?.setTextColor(COLOR_DIALOG_MUTED)
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(0xFFEA5455.toInt())
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(0xFF2E93FA.toInt())
     }
 
     // ==================================================

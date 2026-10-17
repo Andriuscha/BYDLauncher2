@@ -2,6 +2,7 @@ package com.ar.bydlauncher.db
 
 import android.content.ContentValues
 import android.content.Context
+import android.database.DatabaseUtils
 import android.util.Log
 import com.ar.bydlauncher.byd.RouteProfile
 import kotlinx.coroutines.Dispatchers
@@ -21,8 +22,8 @@ class KmPerPctRepository(context: Context) {
 
         const val TAU_MS = 5L * 24 * 3600_000L       // 5 дней — для весов
         const val WINDOW_MS = 15L * 24 * 3600_000L   // окно выборки
-        const val MIN_KM = 10.0                       // мин. длина поездки
-        const val MIN_SOC_DELTA = 3                   // мин. дельта SOC
+        const val MIN_KM = 4.0                       // мин. длина поездки
+        const val MIN_SOC_DELTA = 2                   // мин. дельта SOC
         const val MAX_SAMPLES = 30
         const val REF_TEMP_C = 20.0                   // эталон температуры
     }
@@ -54,7 +55,7 @@ class KmPerPctRepository(context: Context) {
             if (trip.distanceKm < MIN_KM)  return@withContext
             val avgSpeed = trip.avgSpeedKmh ?: return@withContext
             if (avgSpeed < 15.0) return@withContext
-            if (trip.consumption !in 5.0..30.0) return@withContext
+            if (trip.consumption !in 5.0..45.0) return@withContext
             if (!trip.finished) return@withContext
 
             val endedAt = trip.endedAt ?: trip.startedAt
@@ -80,6 +81,42 @@ class KmPerPctRepository(context: Context) {
             Log.i(TAG, "recordTrip: tripId=${trip.id}, km/%=${"%.2f".format(kmPerPct)}, id=$id")
         } catch (t: Throwable) {
             Log.e(TAG, "recordTrip failed: ${t.javaClass.simpleName}: ${t.message}", t)
+        }
+    }
+
+    /**
+     * Дозаписывает сэмплы по завершённым поездкам, которых ещё нет в km_per_pct.
+     * Идемпотентно: для поездки, у которой сэмпл уже есть, второй не создаётся.
+     * Берутся только поездки в пределах WINDOW_MS: более старые в расчёте не участвуют.
+     * Пороги (км, дельта SOC, расход, скорость) применяет recordTrip().
+     * Возвращает число добавленных сэмплов.
+     */
+    suspend fun backfillFromTrips(tripRepo: TripRepository): Int = withContext(Dispatchers.IO) {
+        try {
+            val from = System.currentTimeMillis() - WINDOW_MS
+
+            val existing = HashSet<Long>()
+            db.readableDatabase.query(
+                TripDatabase.TABLE_KMPCT, arrayOf(TripDatabase.KP_TRIP_ID),
+                null, null, null, null, null
+            ).use { c ->
+                while (c.moveToNext()) existing.add(c.getLong(0))
+            }
+
+            val before = DatabaseUtils.queryNumEntries(db.readableDatabase, TripDatabase.TABLE_KMPCT)
+
+            tripRepo.getAllFinished()
+                .filter { (it.endedAt ?: it.startedAt) >= from && it.id !in existing }
+                .sortedBy { it.endedAt ?: it.startedAt }
+                .forEach { recordTrip(it) }
+
+            val after = DatabaseUtils.queryNumEntries(db.readableDatabase, TripDatabase.TABLE_KMPCT)
+            val added = (after - before).toInt()
+            Log.i(TAG, "backfill: +$added samples")
+            added
+        } catch (t: Throwable) {
+            Log.e(TAG, "backfill failed: ${t.javaClass.simpleName}: ${t.message}", t)
+            0
         }
     }
 

@@ -29,7 +29,7 @@ class TripDetector {
         val endOdometerKm: Double? = null,
         val startSoc: Int? = null,
         val endSoc: Int? = null,
-        val routeProfile: RouteProfile = RouteProfile.UNKNOWN   // ← НОВОЕ
+        val routeProfile: RouteProfile = RouteProfile.UNKNOWN
     )
 
     private var startTs = 0L
@@ -71,11 +71,17 @@ class TripDetector {
         tempInsideC: Int?,
         battTempC: Int?,
         driverBeltBuckled: Boolean?,
-        routeProfile: RouteProfile = RouteProfile.UNKNOWN   // ← НОВОЕ
+        routeProfile: RouteProfile = RouteProfile.UNKNOWN
     ): TripState {
         mileageKm?.let { lastMileage = it.toDouble() }
         lifetimeKwh?.let { lastKwh = it.toDouble() }
         socPercent?.let { lastSoc = Math.round(it) }
+
+        // ── НОВОЕ: Если КПП = null, значит зажигание выключено ──
+        if (gearMode == null && startTs != 0L) {
+            Log.i(TAG, "Ignition OFF detected in snapshot -> force finish trip")
+            return forceFinish(ts, routeProfile)
+        }
 
         val inP = gearMode == GEAR_P
         val notP = gearMode != null && gearMode != GEAR_P
@@ -153,6 +159,34 @@ class TripDetector {
         }
 
         return buildState(ts, routeProfile)
+    }
+
+    /**
+     * Принудительное завершение поездки при выключении зажигания.
+     * Вызывается, если в onSnapshot пришел gearMode == null.
+     */
+    fun onIgnitionOff(ts: Long, routeProfile: RouteProfile = RouteProfile.UNKNOWN): TripState {
+        if (startTs == 0L) return TripState(active = false, routeProfile = routeProfile)
+        Log.i(TAG, "Force finish on ignition off")
+        return forceFinish(ts, routeProfile)
+    }
+
+    private fun forceFinish(ts: Long, routeProfile: RouteProfile): TripState {
+        // Если таймер конца уже идет, берем время отстегивания (pendingSince).
+        // Если нет — берем текущее время (ts).
+        val actualEndTime = if (pendingSince != 0L) pendingSince else ts
+
+        val closing = buildState(ts, routeProfile).copy(
+            active = false,
+            endedAt = actualEndTime,
+            endPendingSince = null
+        )
+        lastDiag = "завершена по зажиганию"
+        Log.i(TAG, "Trip force-ended: %.2f km, %.2f kWh, %d min".format(
+            closing.distanceKm, closing.energyKwh, closing.durationMin
+        ))
+        reset()
+        return closing
     }
 
     private fun reset() {

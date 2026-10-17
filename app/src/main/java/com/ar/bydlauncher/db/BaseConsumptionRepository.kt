@@ -24,7 +24,7 @@ class BaseConsumptionRepository(context: Context) {
 
         const val TAU_MS = 3L * 24 * 3600_000L       // 3 дня
         const val MAX_AGE_MS = 7L * 24 * 3600_000L   // не старше 7 дней
-        const val MIN_KM = 20.0                       // мин. длина поездки
+        const val MIN_KM = 10.0                       // мин. длина поездки
         const val MAX_SAMPLES = 10
         const val MIN_CONSUMPTION = 5.0
         const val MAX_CONSUMPTION = 30.0

@@ -6,12 +6,18 @@ import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.view.WindowManager
+import android.text.InputType
+import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.ar.bydlauncher.adb.AdbClient
+import com.ar.bydlauncher.backup.BackupHttpServer
 import com.ar.bydlauncher.backup.BackupManager
+import com.ar.bydlauncher.backup.BackupSettings
+import com.ar.bydlauncher.backup.TelegramBackupUploader
 import com.ar.bydlauncher.byd.AutoserviceClient
 import com.ar.bydlauncher.scenario.ScenarioEngine
 import com.ar.bydlauncher.scenario.ScenarioSettingsRepository
@@ -38,6 +44,9 @@ class LauncherSettingsActivity : Activity() {
     private lateinit var adb: AdbClient
     private lateinit var backupManager: BackupManager
     private lateinit var tvBackupStatus: TextView
+    private lateinit var btnBackupPhone: TextView
+    private lateinit var tvBackupPhoneInfo: TextView
+    private var httpServer: BackupHttpServer? = null
 
     // ── Сценарии ──
     private lateinit var scenarioRepo: ScenarioSettingsRepository
@@ -114,6 +123,10 @@ class LauncherSettingsActivity : Activity() {
         tvBackupStatus = findViewById(R.id.tvBackupStatus)
         findViewById<View>(R.id.btnBackupExport).setOnClickListener { exportBackup() }
         findViewById<View>(R.id.btnBackupImport).setOnClickListener { showImportDialog() }
+        btnBackupPhone = findViewById(R.id.btnBackupPhone)
+        tvBackupPhoneInfo = findViewById(R.id.tvBackupPhoneInfo)
+        btnBackupPhone.setOnClickListener { togglePhoneServer() }
+        findViewById<View>(R.id.btnBackupTelegram).setOnClickListener { showTelegramDialog() }
 
         // ── сценарии ──
         setupScenarios()
@@ -369,12 +382,108 @@ class LauncherSettingsActivity : Activity() {
         }
     }
 
+    // ── Передача на телефон через хотспот ──
+
+    private fun togglePhoneServer() {
+        val running = httpServer
+        if (running != null) {
+            running.stop()
+            httpServer = null
+            btnBackupPhone.text = "Передать на телефон (хотспот)"
+            tvBackupPhoneInfo.visibility = View.GONE
+            return
+        }
+        val srv = BackupHttpServer(backupManager)
+        if (!srv.start()) {
+            Toast.makeText(this, "Не удалось запустить сервер", Toast.LENGTH_SHORT).show()
+            return
+        }
+        httpServer = srv
+        val urls = srv.localAddresses().map { "http://$it:${BackupHttpServer.PORT}/${srv.pin}/" }
+        tvBackupPhoneInfo.text = if (urls.isEmpty()) {
+            "Нет сети. Подключите ГУ к хотспоту телефона и включите заново."
+        } else {
+            "Откройте в браузере телефона:\n" + urls.joinToString("\n")
+        }
+        tvBackupPhoneInfo.visibility = View.VISIBLE
+        btnBackupPhone.text = "Остановить передачу"
+    }
+
+    // ── Telegram ──
+
+    private fun showTelegramDialog() {
+        val s = BackupSettings(this)
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, 0)
+        }
+        val etToken = EditText(this).apply {
+            hint = "Токен бота"
+            setText(s.tgToken)
+            setSingleLine()
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        }
+        val etChat = EditText(this).apply {
+            hint = "Chat ID"
+            setText(s.tgChatId)
+            setSingleLine()
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        }
+        val cbAuto = CheckBox(this).apply {
+            text = "Автобэкап после поездки (не чаще раза в 6 часов)"
+            isChecked = s.tgAutoEnabled
+        }
+        val cbStrip = CheckBox(this).apply {
+            text = "Не отправлять координаты и место зарядки"
+            isChecked = s.tgStripCoords
+        }
+        val status = TextView(this).apply {
+            textSize = 12f
+            text = when {
+                s.lastError.isNotEmpty() -> "Последняя ошибка: ${s.lastError}"
+                s.lastOkTs > 0 -> "Последняя отправка: " +
+                        java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault())
+                            .format(java.util.Date(s.lastOkTs))
+                else -> "Ещё не отправлялось"
+            }
+        }
+        box.addView(etToken); box.addView(etChat); box.addView(cbAuto); box.addView(cbStrip); box.addView(status)
+
+        fun save() {
+            s.tgToken = etToken.text.toString()
+            s.tgChatId = etChat.text.toString()
+            s.tgAutoEnabled = cbAuto.isChecked
+            s.tgStripCoords = cbStrip.isChecked
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Telegram")
+            .setView(box)
+            .setPositiveButton("Сохранить") { _, _ -> save() }
+            .setNeutralButton("Сохранить и отправить") { _, _ ->
+                save()
+                setBackupStatus("Отправка в Telegram…", 0xFFB0B4BD.toInt())
+                scope.launch {
+                    val r = TelegramBackupUploader.sendNow(applicationContext)
+                    withContext(Dispatchers.Main) {
+                        if (r.isSuccess) setBackupStatus("✓ Отправлено в Telegram", 0xFF28C76F.toInt())
+                        else setBackupStatus("✗ Telegram: ${BackupSettings(this@LauncherSettingsActivity).lastError}", 0xFFEA5455.toInt())
+                    }
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
     private fun setBackupStatus(text: String, color: Int) {
         tvBackupStatus.text = text
         tvBackupStatus.setTextColor(color)
     }
 
     override fun onDestroy() {
+        httpServer?.stop()
+        httpServer = null
         scope.cancel()
         super.onDestroy()
     }

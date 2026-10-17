@@ -49,6 +49,9 @@ class BackupManager(private val context: Context) {
         return dir
     }
 
+    /** Папка бэкапов (нужна HTTP-серверу для приёма файлов с телефона). */
+    fun backupDir(): File = getBackupDir()
+
     // ==================================================
     //  ЭКСПОРТ
     // ==================================================
@@ -71,6 +74,43 @@ class BackupManager(private val context: Context) {
             file
         } catch (e: Exception) {
             Log.e(TAG, "exportToDownloads failed: ${e.javaClass.simpleName}: ${e.message}", e)
+            null
+        }
+    }
+
+    /**
+     * Бэкап для отправки наружу (Telegram): пишется во временный файл в cacheDir.
+     * stripCoords — убрать координаты поездок и место зарядки.
+     * ВНИМАНИЕ: восстановление такого файла сотрёт координаты и в локальной БД.
+     */
+    suspend fun exportForUpload(stripCoords: Boolean): File? = withContext(Dispatchers.IO) {
+        try {
+            val root = collectAll()
+            if (stripCoords) {
+                val trips = root.optJSONArray("trips")
+                if (trips != null) {
+                    for (i in 0 until trips.length()) {
+                        val o = trips.getJSONObject(i)
+                        o.remove(TripDatabase.COL_START_LAT)
+                        o.remove(TripDatabase.COL_START_LON)
+                        o.remove(TripDatabase.COL_END_LAT)
+                        o.remove(TripDatabase.COL_END_LON)
+                    }
+                }
+                val chargings = root.optJSONArray("chargings")
+                if (chargings != null) {
+                    for (i in 0 until chargings.length()) {
+                        chargings.getJSONObject(i).remove(TripDatabase.CH_LOCATION)
+                    }
+                }
+            }
+            root.put("coordsStripped", stripCoords)
+            val ts = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
+            val file = File(context.cacheDir, "$FILE_PREFIX$ts.json")
+            file.writeText(root.toString())
+            file
+        } catch (e: Exception) {
+            Log.e(TAG, "exportForUpload failed: ${e.javaClass.simpleName}: ${e.message}", e)
             null
         }
     }

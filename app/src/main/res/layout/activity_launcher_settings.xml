@@ -269,6 +269,31 @@
                         android:text="Восстановить из бэкапа" />
 
                     <TextView
+                        android:id="@+id/btnBackupPhone"
+                        style="@style/SettingsPrimaryButton"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/bg_settings_btn_blue"
+                        android:text="Передать на телефон (хотспот)" />
+
+                    <TextView
+                        android:id="@+id/tvBackupPhoneInfo"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:fontFamily="monospace"
+                        android:text=""
+                        android:textColor="#B0B4BD"
+                        android:textSize="13sp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/btnBackupTelegram"
+                        style="@style/SettingsPrimaryButton"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/bg_settings_btn_violet"
+                        android:text="Telegram: автобэкап" />
+
+                    <TextView
                         android:id="@+id/tvBackupStatus"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
