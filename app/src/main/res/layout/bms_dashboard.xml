@@ -1,0 +1,815 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_widget_outer"
+    android:padding="6dp">
+
+    <!-- ============================================ -->
+    <!-- ЧИП 1: SOC+МОЩНОСТЬ | ПРОГНОЗ | ПРАВАЯ       -->
+    <!-- ============================================ -->
+    <LinearLayout
+        android:id="@+id/bmsChipTop"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_chip"
+        android:orientation="vertical"
+        android:padding="4dp"
+        android:clickable="true"
+        android:focusable="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:baselineAligned="false">
+
+            <!-- ═══════════════════════════════════════ -->
+            <!-- ЛЕВАЯ: SOC + МОЩНОСТЬ (иконка слева)     -->
+            <!-- ═══════════════════════════════════════ -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="25"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+
+                <!-- Подпись -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:letterSpacing="0.06"
+                    android:text="ЗАРЯД (SOC)"
+                    android:textAllCaps="true"
+                    android:textColor="#B0B4BD"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <!-- ═══ Строка: ИКОНКА + ЧИСЛО ═══ -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <!-- Иконка SOC -->
+                    <ImageView
+                        android:id="@+id/bmsSocIcon"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:layout_marginEnd="6dp"
+                        android:contentDescription="@string/soc_icon_desc"
+                        android:src="@drawable/ic_soh_ring" />
+
+                    <!-- Число SOC -->
+                    <TextView
+                        android:id="@+id/bmsSoc"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:includeFontPadding="false"
+                        android:letterSpacing="-0.05"
+                        android:text="87"
+                        android:textColor="#28C76F"
+                        android:textSize="42sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- Мощность -->
+                <TextView
+                    android:id="@+id/bmsPower"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:fontFamily="monospace"
+                    android:includeFontPadding="false"
+                    android:text="+0.17"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <!-- Состояние -->
+                <TextView
+                    android:id="@+id/bmsPowerState"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:includeFontPadding="false"
+                    android:letterSpacing="0.04"
+                    android:text="ПОКОЙ"
+                    android:textAllCaps="true"
+                    android:textColor="#B0B4BD"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:layout_marginHorizontal="8dp"
+                android:background="#3A3E48" />
+
+            <!-- ═══════════════════════════════════════ -->
+            <!-- ЦЕНТР: ПРОГНОЗ + МАКС/МИН + ФАКТОРЫ       -->
+            <!-- ═══════════════════════════════════════ -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="50"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:letterSpacing="0.06"
+                    android:text="ПРОГНОЗ ПРОБЕГА, КМ"
+                    android:textAllCaps="true"
+                    android:textColor="#B0B4BD"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <!-- Иконка слева от числа -->
+                    <ImageView
+                        android:id="@+id/bmsRangeIcon"
+                        android:layout_width="34dp"
+                        android:layout_height="34dp"
+                        android:layout_marginEnd="8dp"
+                        android:contentDescription="@string/range_icon_desc"
+                        android:src="@drawable/ic_range_road_large" />
+
+                    <TextView
+                        android:id="@+id/bmsRange"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:includeFontPadding="false"
+                        android:letterSpacing="-0.04"
+                        android:text="344"
+                        android:textColor="#FFFFFF"
+                        android:textSize="52sp"
+                        android:textStyle="bold" />
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="60dp"
+                        android:layout_marginHorizontal="10dp"
+                        android:background="#3A3E48" />
+
+                    <!-- Правая мини-колонка: км/% + тренд -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <!-- Строка 1: % + значение -->
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
+                                android:src="@drawable/ic_km_per_pct"
+                                android:contentDescription="@string/km_per_pct" />
+
+                            <TextView
+                                android:id="@+id/bmsRangeMax"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="6dp"
+                                android:fontFamily="monospace"
+                                android:includeFontPadding="false"
+                                android:text="3.0"
+                                android:textColor="#4FD1C5"
+                                android:textSize="22sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <!-- Строка 2: стрелка-иконка + значение -->
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:id="@+id/bmsKmPerPctTrendIcon"
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
+                                android:src="@drawable/ic_trend_flat"
+                                android:contentDescription="@string/trend" />
+
+                            <TextView
+                                android:id="@+id/bmsRangeMin"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="10dp"
+                                android:fontFamily="monospace"
+                                android:includeFontPadding="false"
+                                android:text="2.9"
+                                android:textColor="#B0B4BD"
+                                android:textSize="20sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- ФАКТОРЫ ПРОГНОЗА -->
+                <TextView
+                    android:id="@+id/bmsRangeFactors"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:letterSpacing="0.04"
+                    android:text=""
+                    android:textColor="#B0B4BD"
+                    android:textSize="10sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:layout_marginHorizontal="8dp"
+                android:background="#3A3E48" />
+
+            <!-- ═══════════════════════════════════════ -->
+            <!-- ПРАВАЯ: 6 строк + бейдж профиля           -->
+            <!-- ═══════════════════════════════════════ -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="25"
+                android:gravity="center_vertical"
+                android:orientation="vertical">
+
+                <!-- 1. ПРОБЕГ, КМ -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:includeFontPadding="false"
+                    android:letterSpacing="0.06"
+                    android:text="ПРОБЕГ, КМ"
+                    android:textAllCaps="true"
+                    android:textColor="#B0B4BD"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <!-- 2. Значение пробега -->
+                <TextView
+                    android:id="@+id/bmsOdometer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="0dp"
+                    android:fontFamily="monospace"
+                    android:includeFontPadding="false"
+                    android:text="42 836.5"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <!-- 3. BMS, КВТ·Ч -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:fontFamily="monospace"
+                    android:includeFontPadding="false"
+                    android:letterSpacing="0.06"
+                    android:text="BMS, КВТ·Ч"
+                    android:textAllCaps="true"
+                    android:textColor="#B0B4BD"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <!-- 4. Значение BMS -->
+                <TextView
+                    android:id="@+id/bmsLifetimeKwh"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:fontFamily="monospace"
+                    android:includeFontPadding="false"
+                    android:text="6783.7"
+                    android:textColor="#4FD1C5"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:src="@drawable/ic_speed_avg"
+                        android:contentDescription="@string/avg_speed" />
+
+                    <TextView
+                        android:id="@+id/bmsRouteProfile"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:fontFamily="monospace"
+                        android:includeFontPadding="false"
+                        android:text="—"
+                        android:textColor="#5B9CFF"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- 7. Бейдж профиля — центрирован по горизонтали -->
+                <TextView
+                    android:id="@+id/bmsRouteProfileBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:layout_gravity="center_horizontal"
+                    android:background="@drawable/bg_profile_unknown"
+                    android:fontFamily="monospace"
+                    android:includeFontPadding="false"
+                    android:letterSpacing="0.06"
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="3dp"
+                    android:text="ГОРОД"
+                    android:textAllCaps="true"
+                    android:textColor="#4FD1C5"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ============================================ -->
+    <!-- ЧИП 2: ЯЧЕЙКИ + SOH + Δ                       -->
+    <!-- ============================================ -->
+    <LinearLayout
+        android:id="@+id/bmsChipMiddle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
+        android:background="@drawable/bg_chip"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:baselineAligned="false"
+        android:clickable="true"
+        android:focusable="true">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:letterSpacing="0.08"
+                android:text="НАПРЯЖЕНИЕ ПО ЯЧЕЙКАМ, МАКС|МИН, В"
+                android:textAllCaps="true"
+                android:textColor="#B0B4BD"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/bmsCellMax"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="3.344"
+                    android:textColor="#FFFFFF"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="18dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:background="#3A3E48" />
+
+                <TextView
+                    android:id="@+id/bmsCellMin"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="3.321"
+                    android:textColor="#FFFFFF"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:letterSpacing="0.08"
+                android:text="ТЕМПЕРАТУРА ПО ЯЧЕЙКАМ МАКС|МИН, °C"
+                android:textAllCaps="true"
+                android:textColor="#B0B4BD"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/bmsTempMax"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="20"
+                    android:textColor="#FFFFFF"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="18dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:background="#3A3E48" />
+
+                <TextView
+                    android:id="@+id/bmsTempMin"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="18"
+                    android:textColor="#FFFFFF"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:layout_marginHorizontal="6dp"
+            android:background="#3A3E48" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:id="@+id/sohBlock"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_soh_box"
+                android:gravity="center"
+                android:minWidth="80dp"
+                android:orientation="vertical"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="6dp"
+                android:clickable="true"
+                android:focusable="true">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.08"
+                    android:text="SOH"
+                    android:textAllCaps="true"
+                    android:textColor="#B0B4BD"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/bmsSoh"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="—"
+                    android:textColor="#2E93FA"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_delta_box"
+                android:gravity="center"
+                android:minWidth="80dp"
+                android:orientation="vertical"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="6dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.08"
+                    android:text="Δ ЯЧЕЕК"
+                    android:textAllCaps="true"
+                    android:textColor="#B0B4BD"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/bmsDelta"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="21 мВ"
+                    android:textColor="#FF9F43"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:layout_marginHorizontal="6dp"
+            android:background="#3A3E48" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:letterSpacing="0.08"
+                android:text="НАПРЯЖЕНИЕ, СИЛА ТОКА"
+                android:textAllCaps="true"
+                android:textColor="#B0B4BD"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/bmsHv"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="346 В"
+                    android:textColor="#FFFFFF"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="18dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:background="#3A3E48" />
+
+                <TextView
+                    android:id="@+id/bmsCurrent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="0 А"
+                    android:textColor="#FFFFFF"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:letterSpacing="0.08"
+                android:text="НАПРЯЖЕНИЕ 12В АКБ"
+                android:textAllCaps="true"
+                android:textColor="#B0B4BD"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/bmsV12"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="monospace"
+                android:text="13.80"
+                android:textColor="#FFFFFF"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ============================================ -->
+    <!-- ЧИП 3: ПОЕЗДКА ЗА ДЕНЬ                        -->
+    <!-- ============================================ -->
+    <LinearLayout
+        android:id="@+id/bmsChipBottom"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
+        android:background="@drawable/bg_chip"
+        android:orientation="vertical"
+        android:padding="3dp"
+        android:clickable="true"
+        android:focusable="true">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:letterSpacing="0.08"
+            android:text="ПОЕЗДКИ ЗА ДЕНЬ"
+            android:textAllCaps="true"
+            android:textColor="#B0B4BD"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:orientation="horizontal"
+            android:baselineAligned="false">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.08"
+                    android:text="ПРОБЕГ"
+                    android:textAllCaps="true"
+                    android:textColor="#B0B4BD"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/bmsTripDistance"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:fontFamily="monospace"
+                    android:text="0.0 км"
+                    android:textColor="#FFFFFF"
+                    android:textSize="19sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:background="#3A3E48" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.08"
+                    android:text="РАСХОД"
+                    android:textAllCaps="true"
+                    android:textColor="#B0B4BD"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/bmsTripConsumption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:fontFamily="monospace"
+                    android:text="0.0 кВт·ч"
+                    android:textColor="#FFFFFF"
+                    android:textSize="19sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:background="#3A3E48" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.08"
+                    android:text="ИЗРАСХОДОВАНО"
+                    android:textAllCaps="true"
+                    android:textColor="#B0B4BD"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/bmsTripEnergy"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:fontFamily="monospace"
+                    android:text="0.0 кВт·ч"
+                    android:textColor="#FFFFFF"
+                    android:textSize="19sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingTop="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:letterSpacing="0.08"
+                android:text="ПРОБЕГ ПОСЛЕ ПОЛНОЙ ЗАРЯДКИ"
+                android:textAllCaps="true"
+                android:textColor="#B0B4BD"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/bmsFullRange"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5dp"
+                android:fontFamily="monospace"
+                android:text="380 км"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

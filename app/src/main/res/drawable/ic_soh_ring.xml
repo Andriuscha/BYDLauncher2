@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- ФОНОВОЕ КОЛЬЦО (трек)                   -->
+    <!-- ═══════════════════════════════════════ -->
+    <path
+        android:pathData="M32,8 A24,24 0 1,1 31.99,8 Z"
+        android:strokeColor="#E5E7EB"
+        android:strokeWidth="4"
+        android:strokeAlpha="0.2"
+        android:fillColor="#00000000"/>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- ПРОГРЕСС 80% (дуга от 12 часов)         -->
+    <!-- ═══════════════════════════════════════ -->
+    <path
+        android:pathData="M32,8 A24,24 0 0,1 52.7,39.6"
+        android:strokeColor="#4FD1C5"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"/>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- МОЛНИЯ В ЦЕНТРЕ                         -->
+    <!-- ═══════════════════════════════════════ -->
+    <path
+        android:pathData="M35,18 L26,34 L31,34 L29,46 L38,30 L33,30 Z"
+        android:fillColor="#FFFFFF"/>
+
+</vector>

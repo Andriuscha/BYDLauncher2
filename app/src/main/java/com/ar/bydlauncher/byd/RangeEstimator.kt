@@ -73,19 +73,39 @@ class RangeEstimator {
         val precipK = precipCoefficient(weather)
 
         // ═════════════════════════════════════════════════════
-        // ВЕТКА 1: эмпирика км/% (приоритет)
+        // РАСЧЕТ ФИЗИЧЕСКОЙ МОДЕЛИ (нужен как "якорь")
+        // ═════════════════════════════════════════════════════
+        val base = baseRecent ?: RangeMath.BASE_DEFAULT_KWH100
+        val weatherRaw = tempK * speedK * windK * precipK
+        val weatherWeighted = 1.0 + (weatherRaw - 1.0) * routeProfile.weatherWeight
+        val physConsumption = base * routeProfile.extraK * weatherWeighted
+        val soh = (sohPercent ?: 100) / 100.0
+        val effectiveKwh = NOMINAL_KWH * soh * (soc / 100.0)
+
+        val physKm = if (physConsumption > 0.5) {
+            (effectiveKwh / physConsumption * 100).toInt().coerceAtLeast(0)
+        } else 0
+
+        // ═════════════════════════════════════════════════════
+        // ВЕТКА 1: эмпирика км/% (с защитой от аномалий)
         // ═════════════════════════════════════════════════════
         if (kmPerPctNorm != null && kmPerPctNorm > 0.5) {
-            // kmPerPctNorm приведён к 20°C (км/% * tempK поездки); tempK — множитель
-            // расхода, поэтому к текущей температуре возвращаемся делением.
             val kmPerPctEff = kmPerPctNorm / tempK
-            val mainKm = (kmPerPctEff * soc).toInt().coerceAtLeast(0)
+            val empiricalKm = (kmPerPctEff * soc).toInt().coerceAtLeast(0)
+
+            // Защита: если эмпирика дает меньше 75% от физики — она "сломана" (пробки/трасса/мороз)
+            // Берем среднее между физикой и эмпирикой, либо доверяем физике
+            val mainKm = if (empiricalKm < physKm * 0.75) {
+                // Эмпирика слишком пессимистична — смешиваем 50/50
+                ((empiricalKm + physKm) / 2.0).toInt()
+            } else {
+                empiricalKm
+            }
 
             val heaterWarning = computeHeaterWarning(socPercent, maxCellV, battTempC)
             val favorable = mainKm > 0 && !heaterWarning
 
             // Для consumption показываем "эквивалент" из км/%
-            // (это НЕ физический расход, а производная величина)
             val equivalentConsumption = if (kmPerPctEff > 0.5) {
                 NOMINAL_KWH / (kmPerPctEff * 100) * 100
             } else 0.0
@@ -117,23 +137,10 @@ class RangeEstimator {
         // ═════════════════════════════════════════════════════
         // ВЕТКА 2: baseRecent или FALLBACK
         // ═════════════════════════════════════════════════════
-        val base = baseRecent ?: RangeMath.BASE_DEFAULT_KWH100
         val source = if (baseRecent != null) EstimateSource.BASE_RECENT else EstimateSource.FALLBACK
 
-        // Погодный вес: чем ниже weatherWeight профиля, тем меньше влияет погода
-        val weatherRaw = tempK * speedK * windK * precipK
-        val weatherWeighted = 1.0 + (weatherRaw - 1.0) * routeProfile.weatherWeight
-
-        // extraK профиля
-        val consumption = base * routeProfile.extraK * weatherWeighted
-        val soh = (sohPercent ?: 100) / 100.0
-        val effectiveKwh = NOMINAL_KWH * soh * (soc / 100.0)
-        val mainKm = if (consumption > 0.5) {
-            (effectiveKwh / consumption * 100).toInt().coerceAtLeast(0)
-        } else 0
-
         val heaterWarning = computeHeaterWarning(socPercent, maxCellV, battTempC)
-        val favorable = mainKm > 0 && !heaterWarning && factorsAreFavorable(
+        val favorable = physKm > 0 && !heaterWarning && factorsAreFavorable(
             tempK, speedK, routeProfile, windK, precipK, windRes.second, calibrationFactor
         )
 
@@ -149,8 +156,8 @@ class RangeEstimator {
         )
 
         return Estimate(
-            mainKm = mainKm,
-            consumption = consumption,
+            mainKm = physKm,
+            consumption = physConsumption,
             baseConsumption = base,
             heaterWarning = heaterWarning,
             factors = factors,
