@@ -30,6 +30,7 @@ import com.ar.bydlauncher.byd.FullChargeTracker
 import com.ar.bydlauncher.byd.RangeEstimator
 import com.ar.bydlauncher.location.CarLocationProvider
 import com.ar.bydlauncher.ui.CaptionMaskOverlay
+import com.ar.bydlauncher.ui.ComfortPopup
 import com.ar.bydlauncher.ui.NavigatorPanelController
 import com.ar.bydlauncher.weather.Weather
 import com.ar.bydlauncher.weather.WeatherClient
@@ -164,6 +165,7 @@ class MainActivity : Activity() {
     private var tripTrackJob: Job? = null
 
     private lateinit var navigator: NavigatorPanelController
+    private lateinit var comfortPopup: ComfortPopup
 
     @Volatile
     private var lastKnownLocation: Location? = null
@@ -332,6 +334,10 @@ class MainActivity : Activity() {
         fullChargeTracker = FullChargeTracker(this)
         captionMask = CaptionMaskOverlay(this)
         navigator = NavigatorPanelController(this, scope, adb, captionMask, navPlaceholder, labelNav)
+        comfortPopup = ComfortPopup(this, adb, btnClimate).apply {
+            onShown = { selectDockButton(btnClimate) }
+            onDismissed = { selectDockButton(btnNav) }
+        }
         carLocationProvider = CarLocationProvider(this)
         tripRepository = TripRepository(this)
         calibrationRepo = CalibrationRepository(this)
@@ -436,7 +442,13 @@ class MainActivity : Activity() {
     }
     override fun onPause() {
         super.onPause()
+        comfortPopup.dismiss(animated = false)
         runCatching { captionMask.hide() }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (comfortPopup.isShowing) comfortPopup.dismiss() else super.onBackPressed()
     }
 
     // ==================================================
@@ -479,6 +491,7 @@ class MainActivity : Activity() {
     }
 
     private fun openInternalActivity(intent: Intent) {
+        comfortPopup.dismiss(animated = false)
         navigator.onBeforeOpenExternal()
         startActivity(intent)
     }
@@ -489,6 +502,7 @@ class MainActivity : Activity() {
 
     private fun setupBottomButtons() {
         btnNav.setOnClickListener {
+            comfortPopup.dismiss()
             selectDockButton(btnNav)
             navigator.onNavDockClicked()
         }
@@ -497,8 +511,8 @@ class MainActivity : Activity() {
             openInternalActivity(Intent(this@MainActivity, LauncherSettingsActivity::class.java))
         }
         btnClimate.setOnClickListener {
-            selectDockButton(btnClimate)
-            openInternalActivity(Intent(this@MainActivity, ComfortActivity::class.java))
+            // Всплывающее окно «Климат» (оверлей), а не отдельная Activity
+            comfortPopup.toggle()
         }
         btnTrip.setOnClickListener {
             selectDockButton(btnTrip)
@@ -1357,6 +1371,7 @@ class MainActivity : Activity() {
     // ==================================================
 
     override fun onDestroy() {
+        runCatching { comfortPopup.release() }
         runCatching { captionMask.hide() }
             .onFailure { Log.w(TAG, "captionMask.hide failed: ${it.message}") }
         if (::scenarioEngine.isInitialized) {
