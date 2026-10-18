@@ -182,7 +182,7 @@ class MainActivity : Activity() {
         private const val DAY_SUMMARY_REFRESH_MS = 30_000L
 
         // Интервал записи GPS-точек во время поездки
-        private const val TRACK_WRITE_INTERVAL_MS = 10_000L
+        private const val TRACK_WRITE_INTERVAL_MS = 5_000L
 
         private const val NOMINAL_KWH = 44.9
 
@@ -334,10 +334,18 @@ class MainActivity : Activity() {
         fullChargeTracker = FullChargeTracker(this)
         captionMask = CaptionMaskOverlay(this)
         navigator = NavigatorPanelController(this, scope, adb, captionMask, navPlaceholder, labelNav)
+
         comfortPopup = ComfortPopup(this, adb, btnClimate).apply {
-            onShown = { selectDockButton(btnClimate) }
-            onDismissed = { selectDockButton(btnNav) }
+            onShown = {
+                selectDockButton(btnClimate)
+                navigator.onOverlayShown() // <-- ДОБАВЛЕНО
+            }
+            onDismissed = {
+                selectDockButton(btnNav)
+                navigator.onOverlayDismissed() // <-- ДОБАВЛЕНО
+            }
         }
+
         carLocationProvider = CarLocationProvider(this)
         tripRepository = TripRepository(this)
         calibrationRepo = CalibrationRepository(this)

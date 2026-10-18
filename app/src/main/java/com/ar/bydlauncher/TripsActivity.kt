@@ -321,11 +321,16 @@ class TripsActivity : Activity() {
                             keyboard: false 
                         });
                         
-                        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                            attribution: '&copy; OpenStreetMap &copy; CARTO',
-                            subdomains: 'abcd',
-                            maxZoom: 19
-                        }).addTo(map);
+                        // Инвертируем цвета OSM для темной темы
+                    var darkFilter = document.createElement('style');
+                    darkFilter.innerHTML = '.leaflet-layer { filter: invert(1) hue-rotate(180deg) brightness(0.8) contrast(1.2); }';
+                    document.head.appendChild(darkFilter);
+
+                    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19,
+    opacity: 0.6 // Делаем карту полупрозрачной, чтобы она сливалась с черным фоном
+}).addTo(map);
 
                         var points = [$coordsJson];
                         if (points.length > 0) {

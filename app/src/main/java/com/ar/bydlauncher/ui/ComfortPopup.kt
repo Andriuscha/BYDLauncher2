@@ -5,6 +5,7 @@ import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.ColorFilter
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
@@ -14,7 +15,7 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.Drawable
 import android.provider.Settings
 import android.util.Log
 import android.util.TypedValue
@@ -55,10 +56,13 @@ import kotlin.math.roundToInt
  *
  * Раскладка слева направо:
  *   [ползунок температуры: HI / 32…17 / LO] [ползунок обдува: 7…1 / OFF]
- *   [большие кнопки подогрева сидений] [зеркала+стекло / рециркуляция / A/C]
+ *   [большие кнопки подогрева сидений]
+ *   [зеркала+стекло / рециркуляция / компрессор] [обдув лобового / режим Эко-Комфорт]
  *
  * «OFF» на ползунке обдува — полное выключение климата (AC_POWER_STATE).
  * Выбор скорости при выключенном климате сначала включает его.
+ * Режим Эко/Комфорт (AC_AUTO_AIR) — тот же параметр, которым управляет ClimateModeScenario:
+ * ручное переключение здесь считается вмешательством пользователя, и сценарий отключится.
  */
 class ComfortPopup(
     private val activity: Activity,
@@ -78,9 +82,11 @@ class ComfortPopup(
         private const val DEV_AC = AutoserviceClient.DEV_AC               // 1000
         private const val DEV_SETTING = AutoserviceClient.DEV_SETTING     // 1023
 
-        // ── FID-ы климата (как в ComfortActivity, проверены на DiLink) ──
-        private const val FID_DEFROST_READ = 1128267825
+        // ── FID-ы климата (проверены на DiLink) ──
+        private const val FID_DEFROST_READ = 1128267825          // зеркала + заднее стекло
         private const val FID_DEFROST_SET = 501219357
+        private const val FID_DEFROST_FRONT_READ = 1077936150    // обдув на лобовое (0/1)
+        private const val FID_DEFROST_FRONT_SET = 501219362
         private const val FID_RECIRC_READ = 1077936148
         private const val FID_RECIRC_SET = 501219355
         private const val FID_AC_POWER_READ = 1077936144
@@ -91,6 +97,10 @@ class ComfortPopup(
         private const val FID_FAN_SET = 501219340
         private const val FID_TEMP_READ = 1077936168
         private const val FID_TEMP_SET = 501219368
+        private const val FID_AUTO_AIR_READ = 1301291032         // 1 = Эко, 2 = Комфорт
+        private const val FID_AUTO_AIR_SET = 1311768588
+        private const val MODE_ECO = 1
+        private const val MODE_COMFORT = 2
 
         // ── Сиденья (DEV_SETTING): 1 = OFF, 2 = слабо, 3 = сильно ──
         private const val FID_SEAT_DRV_READ = 1335885835
@@ -135,6 +145,8 @@ class ComfortPopup(
     private var compressorOn = true
     private var recircOn = false
     private var defrostOn = false
+    private var frontBlowOn = false
+    private var autoMode = MODE_COMFORT
     private var seatDrv = 0
     private var seatPsg = 0
     private val lastEdit = HashMap<String, Long>()
@@ -152,6 +164,8 @@ class ComfortPopup(
     private var tileDefrost: ToggleTile? = null
     private var tileRecirc: ToggleTile? = null
     private var tileAc: ToggleTile? = null
+    private var tileFront: ToggleTile? = null
+    private var tileMode: ToggleTile? = null
 
     // ═══════════════════════════════════════════════
     //  ПОКАЗ / СКРЫТИЕ
@@ -279,7 +293,8 @@ class ComfortPopup(
 
     private fun clearViewRefs() {
         body = null; tempSlider = null; fanSlider = null; tempReadout = null; fanReadout = null
-        seatDrvBtn = null; seatPsgBtn = null; tileDefrost = null; tileRecirc = null; tileAc = null
+        seatDrvBtn = null; seatPsgBtn = null
+        tileDefrost = null; tileRecirc = null; tileAc = null; tileFront = null; tileMode = null
     }
 
     // ═══════════════════════════════════════════════
@@ -287,17 +302,12 @@ class ComfortPopup(
     // ═══════════════════════════════════════════════
 
     private fun buildPanel(): LinearLayout {
+        val density = activity.resources.displayMetrics.density
         val panel = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             isClickable = true
-            setPadding(dpi(14f), dpi(10f), dpi(14f), dpi(14f))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Pal.PANEL_TOP, Pal.PANEL_BOTTOM)
-            ).apply {
-                cornerRadius = dp(24f)
-                setStroke(dpi(1f), Pal.PANEL_STROKE)
-            }
+            setPadding(dpi(16f), dpi(12f), dpi(14f), dpi(14f))
+            background = HudPanelDrawable(density)
         }
         panel.addView(buildHeader(), LinearLayout.LayoutParams(MATCH, dpi(44f)))
 
@@ -317,49 +327,58 @@ class ComfortPopup(
             onCommit = { idx -> setTemp(idx) }
         }
         tempSlider = tSlider
-        val tReadout = readoutText(26f)
+        val tReadout = readoutText(24f)
         tempReadout = tReadout
 
         // ── ползунок обдува ──
         val fSlider = VerticalStepSlider(activity).apply {
             thumbLabels = listOf("OFF") + (1..FAN_MAX).map { it.toString() }
             gutterLabels = mapOf(0 to "OFF") + (1..FAN_MAX).associateWith { it.toString() }
-            gradientColors = intArrayOf(0xFF8AD0FF.toInt(), 0xFF2E93FA.toInt())
+            gradientColors = intArrayOf(0xFF7FE9FF.toInt(), 0xFF2E93FA.toInt())
             emptyIndex = 0
             onPreview = { idx -> showFanReadout(idx) }
             onCommit = { idx -> setFan(idx) }
         }
         fanSlider = fSlider
-        val fReadout = readoutText(26f)
+        val fReadout = readoutText(24f)
         fanReadout = fReadout
 
-        bodyRow.addView(sliderColumn("ТЕМП.", tReadout, tSlider), LinearLayout.LayoutParams(0, MATCH, 1.1f))
-        bodyRow.addView(sliderColumn("ОБДУВ", fReadout, fSlider), LinearLayout.LayoutParams(0, MATCH, 1.1f).apply {
-            marginStart = dpi(4f)
+        bodyRow.addView(sliderColumn("ТЕМП.", tReadout, tSlider), LinearLayout.LayoutParams(0, MATCH, 1.0f))
+        bodyRow.addView(sliderColumn("ОБДУВ", fReadout, fSlider), LinearLayout.LayoutParams(0, MATCH, 1.0f).apply {
+            marginStart = dpi(2f)
         })
         bodyRow.addView(divider(), LinearLayout.LayoutParams(dpi(1f), MATCH).apply {
-            marginStart = dpi(8f); marginEnd = dpi(8f); topMargin = dpi(14f)
+            marginStart = dpi(6f); marginEnd = dpi(6f); topMargin = dpi(14f)
         })
 
         // ── сиденья ──
         val drv = SeatHeatButton(activity, "ВОДИТЕЛЬ").apply { setOnClickListener { cycleSeat(true) } }
         val psg = SeatHeatButton(activity, "ПАССАЖИР").apply { setOnClickListener { cycleSeat(false) } }
         seatDrvBtn = drv; seatPsgBtn = psg
-        val seatsCol = buttonColumn("ПОДОГРЕВ СИДЕНИЙ")
+        val seatsCol = buttonColumn("СИДЕНЬЯ")
         seatsCol.addView(drv, LinearLayout.LayoutParams(MATCH, 0, 1f))
-        seatsCol.addView(psg, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dpi(8f) })
-        bodyRow.addView(seatsCol, LinearLayout.LayoutParams(0, MATCH, 1.4f))
+        seatsCol.addView(psg, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dpi(2f) })
+        bodyRow.addView(seatsCol, LinearLayout.LayoutParams(0, MATCH, 1.2f))
 
-        // ── функции ──
-        val tDefrost = ToggleTile(activity, TileIcon.DEFROST, "ЗЕРКАЛА\n+ СТЕКЛО").apply { setOnClickListener { toggleDefrost() } }
+        // ── функции, ряд 1 ──
+        val tDefrost = ToggleTile(activity, TileIcon.DEFROST_REAR, "ЗЕРКАЛА\n+ СТЕКЛО").apply { setOnClickListener { toggleDefrost() } }
         val tRecirc = ToggleTile(activity, TileIcon.RECIRC, "РЕЦИРКУ-\nЛЯЦИЯ").apply { setOnClickListener { toggleRecirc() } }
         val tAc = ToggleTile(activity, TileIcon.AC, "КОМПРЕССОР\nХОЛОД").apply { setOnClickListener { toggleCompressor() } }
         tileDefrost = tDefrost; tileRecirc = tRecirc; tileAc = tAc
         val tilesCol = buttonColumn("ФУНКЦИИ")
         tilesCol.addView(tDefrost, LinearLayout.LayoutParams(MATCH, 0, 1f))
-        tilesCol.addView(tRecirc, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dpi(8f) })
-        tilesCol.addView(tAc, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dpi(8f) })
-        bodyRow.addView(tilesCol, LinearLayout.LayoutParams(0, MATCH, 1.4f).apply { marginStart = dpi(8f) })
+        tilesCol.addView(tRecirc, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dpi(2f) })
+        tilesCol.addView(tAc, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dpi(2f) })
+        bodyRow.addView(tilesCol, LinearLayout.LayoutParams(0, MATCH, 1.1f))
+
+        // ── функции, ряд 2 ──
+        val tFront = ToggleTile(activity, TileIcon.DEFROST_FRONT, "ОБДУВ\nЛОБОВОГО").apply { setOnClickListener { toggleFront() } }
+        val tMode = ToggleTile(activity, TileIcon.COMFORT, "РЕЖИМ").apply { setOnClickListener { toggleMode() } }
+        tileFront = tFront; tileMode = tMode
+        val tilesCol2 = buttonColumn("РЕЖИМЫ")
+        tilesCol2.addView(tFront, LinearLayout.LayoutParams(MATCH, 0, 1f))
+        tilesCol2.addView(tMode, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dpi(2f) })
+        bodyRow.addView(tilesCol2, LinearLayout.LayoutParams(0, MATCH, 1.1f))
 
         panel.addView(bodyRow, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dpi(4f) })
         return panel
@@ -370,25 +389,27 @@ class ComfortPopup(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        row.addView(label("КЛИМАТ", 15f, Pal.TEXT).apply { letterSpacing = 0.14f },
+        row.addView(label("КЛИМАТ", 15f, Pal.TEXT).apply { letterSpacing = 0.16f },
             LinearLayout.LayoutParams(0, WRAP, 1f))
 
-        val factory = label("ЗАВОДСКОЙ", 10.5f, Pal.TEXT).apply {
+        val d = activity.resources.displayMetrics.density
+        val factory = label("ЗАВОДСКОЙ", 10f, Pal.CYAN).apply {
             gravity = Gravity.CENTER
+            letterSpacing = 0.1f
             setPadding(dpi(14f), 0, dpi(14f), 0)
             isClickable = true
-            background = pillBackground(Pal.TILE_FILL, Pal.TILE_STROKE, 18f)
+            background = ChamferDrawable(d, Pal.TILE_FILL, Pal.withAlpha(Pal.CYAN, 0x88), 8f)
             setOnClickListener { openFactory() }
         }
-        row.addView(factory, LinearLayout.LayoutParams(WRAP, dpi(36f)).apply { marginEnd = dpi(10f) })
+        row.addView(factory, LinearLayout.LayoutParams(WRAP, dpi(34f)).apply { marginEnd = dpi(10f) })
 
-        val close = label("✕", 15f, Pal.TEXT).apply {
+        val close = label("✕", 14f, Pal.TEXT).apply {
             gravity = Gravity.CENTER
             isClickable = true
-            background = pillBackground(Pal.TILE_FILL, Pal.TILE_STROKE, 18f)
+            background = ChamferDrawable(d, Pal.TILE_FILL, Pal.TILE_STROKE, 8f)
             setOnClickListener { dismiss() }
         }
-        row.addView(close, LinearLayout.LayoutParams(dpi(36f), dpi(36f)))
+        row.addView(close, LinearLayout.LayoutParams(dpi(34f), dpi(34f)))
         return row
     }
 
@@ -397,7 +418,7 @@ class ComfortPopup(
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
         }
-        col.addView(label(caption, 9f, Pal.TEXT_DIM).apply { letterSpacing = 0.1f },
+        col.addView(label(caption, 9f, Pal.TEXT_DIM).apply { letterSpacing = 0.12f },
             LinearLayout.LayoutParams(WRAP, dpi(14f)))
         col.addView(readout, LinearLayout.LayoutParams(MATCH, dpi(34f)))
         col.addView(slider, LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = dpi(4f) })
@@ -409,9 +430,9 @@ class ComfortPopup(
         val col = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         col.addView(View(activity), LinearLayout.LayoutParams(MATCH, dpi(14f)))
         col.addView(label(caption, 9f, Pal.TEXT_DIM).apply {
-            letterSpacing = 0.1f
+            letterSpacing = 0.12f
             gravity = Gravity.BOTTOM or Gravity.START
-            setPadding(dpi(2f), 0, 0, dpi(4f))
+            setPadding(dpi(4f), 0, 0, dpi(4f))
         }, LinearLayout.LayoutParams(MATCH, dpi(34f)))
         return col
     }
@@ -436,12 +457,6 @@ class ComfortPopup(
         maxLines = 2
     }
 
-    private fun pillBackground(fill: Int, stroke: Int, radiusDp: Float) = GradientDrawable().apply {
-        setColor(fill)
-        cornerRadius = dp(radiusDp)
-        setStroke(dpi(1f), stroke)
-    }
-
     // ═══════════════════════════════════════════════
     //  СОСТОЯНИЕ → UI
     // ═══════════════════════════════════════════════
@@ -455,6 +470,17 @@ class ComfortPopup(
         tileDefrost?.active = defrostOn
         tileRecirc?.active = recircOn
         tileAc?.active = compressorOn && acPowerOn
+        tileFront?.active = frontBlowOn
+        updateModeTile()
+    }
+
+    private fun updateModeTile() {
+        val t = tileMode ?: return
+        if (autoMode == MODE_ECO) {
+            t.icon = TileIcon.ECO; t.valueLabel = "ЭКО"; t.tint = Pal.ECO
+        } else {
+            t.icon = TileIcon.COMFORT; t.valueLabel = "КОМФОРТ"; t.tint = Pal.COMFORT
+        }
     }
 
     private fun updateReadouts() {
@@ -543,6 +569,11 @@ class ComfortPopup(
         sendSet(DEV_AC, FID_DEFROST_SET, if (defrostOn) 1 else 0)
     }
 
+    private fun toggleFront() {
+        mark("front"); frontBlowOn = !frontBlowOn; tileFront?.active = frontBlowOn
+        sendSet(DEV_AC, FID_DEFROST_FRONT_SET, if (frontBlowOn) 1 else 0)
+    }
+
     private fun toggleRecirc() {
         mark("recirc"); recircOn = !recircOn; tileRecirc?.active = recircOn
         sendSet(DEV_AC, FID_RECIRC_SET, if (recircOn) 1 else 0)
@@ -551,6 +582,13 @@ class ComfortPopup(
     private fun toggleCompressor() {
         mark("comp"); compressorOn = !compressorOn; tileAc?.active = compressorOn && acPowerOn
         sendSet(DEV_AC, FID_COMPRESSOR_SET, if (compressorOn) 1 else 0)
+    }
+
+    private fun toggleMode() {
+        mark("mode")
+        autoMode = if (autoMode == MODE_ECO) MODE_COMFORT else MODE_ECO
+        updateModeTile()
+        sendSet(DEV_AC, FID_AUTO_AIR_SET, autoMode)
     }
 
     private fun openFactory() {
@@ -584,27 +622,31 @@ class ComfortPopup(
     }
 
     private suspend fun readAllState() {
+        val none = Int.MIN_VALUE
         val r = withContext(Dispatchers.IO) {
             intArrayOf(
-                ac.getInt(DEV_AC, FID_DEFROST_READ) ?: Int.MIN_VALUE,
-                ac.getInt(DEV_AC, FID_RECIRC_READ) ?: Int.MIN_VALUE,
-                ac.getInt(DEV_AC, FID_COMPRESSOR_READ) ?: Int.MIN_VALUE,
-                ac.getInt(DEV_AC, FID_AC_POWER_READ) ?: Int.MIN_VALUE,
-                ac.getInt(DEV_AC, FID_TEMP_READ) ?: Int.MIN_VALUE,
-                ac.getInt(DEV_AC, FID_FAN_READ) ?: Int.MIN_VALUE,
-                ac.getInt(DEV_SETTING, FID_SEAT_DRV_READ) ?: Int.MIN_VALUE,
-                ac.getInt(DEV_SETTING, FID_SEAT_PSG_READ) ?: Int.MIN_VALUE
+                ac.getInt(DEV_AC, FID_DEFROST_READ) ?: none,          // 0
+                ac.getInt(DEV_AC, FID_RECIRC_READ) ?: none,           // 1
+                ac.getInt(DEV_AC, FID_COMPRESSOR_READ) ?: none,       // 2
+                ac.getInt(DEV_AC, FID_AC_POWER_READ) ?: none,         // 3
+                ac.getInt(DEV_AC, FID_TEMP_READ) ?: none,             // 4
+                ac.getInt(DEV_AC, FID_FAN_READ) ?: none,              // 5
+                ac.getInt(DEV_SETTING, FID_SEAT_DRV_READ) ?: none,    // 6
+                ac.getInt(DEV_SETTING, FID_SEAT_PSG_READ) ?: none,    // 7
+                ac.getInt(DEV_AC, FID_DEFROST_FRONT_READ) ?: none,    // 8
+                ac.getInt(DEV_AC, FID_AUTO_AIR_READ) ?: none          // 9
             )
         }
-        val none = Int.MIN_VALUE
         val defrost = r[0]; val recirc = r[1]; val comp = r[2]; val power = r[3]
         val temp = r[4]; val fan = r[5]; val drv = r[6]; val psg = r[7]
-        Log.i(TAG, "raw temp=${if (temp == none) null else temp} fan=${if (fan == none) null else fan} " +
-                "power=${if (power == none) null else power} comp=${if (comp == none) null else comp} " +
-                "recirc=${if (recirc == none) null else recirc} defrost=${if (defrost == none) null else defrost} " +
-                "seatDrv=${if (drv == none) null else drv} seatPsg=${if (psg == none) null else psg}")
+        val front = r[8]; val mode = r[9]
+        fun s(v: Int): String = if (v == none) "null" else v.toString()
+        Log.i(TAG, "raw temp=${s(temp)} fan=${s(fan)} power=${s(power)} comp=${s(comp)} " +
+                "recirc=${s(recirc)} defrost=${s(defrost)} front=${s(front)} mode=${s(mode)} " +
+                "seatDrv=${s(drv)} seatPsg=${s(psg)}")
 
         if (defrost != none && !fresh("defrost")) defrostOn = defrost == 1
+        if (front != none && !fresh("front")) frontBlowOn = front == 1
         if (recirc != none && !fresh("recirc")) recircOn = recirc == 1
         if (comp != none && !fresh("comp")) compressorOn = comp != 0
         if (power != none && !fresh("fan")) acPowerOn = power == 1
@@ -612,6 +654,7 @@ class ComfortPopup(
         if (fan != none && !fresh("fan") && fan > 0) fanLevel = fan.coerceIn(1, FAN_MAX)
         if (drv != none && !fresh("seatDrv")) seatDrv = seatLevelFromRaw(drv)
         if (psg != none && !fresh("seatPsg")) seatPsg = seatLevelFromRaw(psg)
+        if ((mode == MODE_ECO || mode == MODE_COMFORT) && !fresh("mode")) autoMode = mode
 
         loadedOnce = true
         if (root != null) {
@@ -637,26 +680,27 @@ class ComfortPopup(
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  ПАЛИТРА
+//  ПАЛИТРА И ХАЙТЕК-ПРИМИТИВЫ
 // ═══════════════════════════════════════════════════════════════════
 
 internal object Pal {
-    const val PANEL_TOP = 0xF21A2434.toInt()
-    const val PANEL_BOTTOM = 0xF20B111C.toInt()
-    const val PANEL_STROKE = 0x33FFFFFF
-    const val DIVIDER = 0x1AFFFFFF
+    const val PANEL_TOP = 0xF0111A28.toInt()
+    const val PANEL_BOTTOM = 0xF0070B12.toInt()
+    const val DIVIDER = 0x2236C8FF
 
-    const val TEXT = 0xFFFFFFFF.toInt()
-    const val TEXT_DIM = 0xFFB0B4BD.toInt()
-    const val ACCENT = 0xFF2E93FA.toInt()
+    const val TEXT = 0xFFEAF6FF.toInt()
+    const val TEXT_DIM = 0xFF8FA3B8.toInt()
+    const val CYAN = 0xFF3DDCFF.toInt()
 
     const val HEAT_LOW = 0xFFFFB84D.toInt()
     const val HEAT_HIGH = 0xFFFF5A36.toInt()
+    const val ECO = 0xFF3DF2A0.toInt()
+    const val COMFORT = 0xFFFFB84D.toInt()
 
-    const val TILE_FILL = 0x14FFFFFF
-    const val TILE_FILL_PRESSED = 0x2BFFFFFF
-    const val TILE_STROKE = 0x24FFFFFF
-    const val ICON_OFF = 0xFFE9EDF5.toInt()
+    const val TILE_FILL = 0x14BFE6FF
+    const val TILE_FILL_PRESSED = 0x2EBFE6FF
+    const val TILE_STROKE = 0x38BFE6FF
+    const val ICON_OFF = 0xFFC9D6E6.toInt()
 
     fun withAlpha(color: Int, alpha: Int): Int = (color and 0x00FFFFFF) or (alpha shl 24)
 }
@@ -664,13 +708,151 @@ internal object Pal {
 internal fun View.spPx(v: Float): Float =
     TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, resources.displayMetrics)
 
+internal object Hud {
+
+    /** Прямоугольник со срезанными верхним правым и нижним левым углами. */
+    fun chamfer(p: Path, r: RectF, cut: Float) {
+        p.reset()
+        p.moveTo(r.left, r.top)
+        p.lineTo(r.right - cut, r.top)
+        p.lineTo(r.right, r.top + cut)
+        p.lineTo(r.right, r.bottom)
+        p.lineTo(r.left + cut, r.bottom)
+        p.lineTo(r.left, r.bottom - cut)
+        p.close()
+    }
+
+    /** «Неоновый» контур: широкая слабая обводка под тонкой яркой. */
+    fun neon(c: Canvas, path: Path, color: Int, d: Float, p: Paint) {
+        p.style = Paint.Style.STROKE
+        p.strokeJoin = Paint.Join.ROUND
+        p.color = Pal.withAlpha(color, 0x14); p.strokeWidth = 9f * d; c.drawPath(path, p)
+        p.color = Pal.withAlpha(color, 0x2C); p.strokeWidth = 5f * d; c.drawPath(path, p)
+        p.color = color; p.strokeWidth = 1.6f * d; c.drawPath(path, p)
+    }
+
+    fun led(c: Canvas, x: Float, y: Float, d: Float, color: Int, lit: Boolean, p: Paint) {
+        p.style = Paint.Style.FILL
+        if (lit) {
+            p.color = Pal.withAlpha(color, 0x30); c.drawCircle(x, y, 6.5f * d, p)
+            p.color = Pal.withAlpha(color, 0x55); c.drawCircle(x, y, 4.5f * d, p)
+            p.color = color; c.drawCircle(x, y, 2.6f * d, p)
+        } else {
+            p.color = 0x44FFFFFF; c.drawCircle(x, y, 2.4f * d, p)
+        }
+    }
+}
+
+/** Фон панели: тёмное «стекло», точечная сетка, срезанные углы и угловые скобки. */
+internal class HudPanelDrawable(private val d: Float) : Drawable() {
+
+    private val path = Path()
+    private val rect = RectF()
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.SQUARE
+    }
+    private val dots = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0x10BFE6FF; strokeWidth = 1.3f * d; strokeCap = Paint.Cap.ROUND
+    }
+    private var dotPoints = FloatArray(0)
+
+    override fun onBoundsChange(b: Rect) {
+        val cut = 18f * d
+        val inset = 1f * d
+        rect.set(b.left + inset, b.top + inset, b.right - inset, b.bottom - inset)
+        // срезаны верхний левый и нижний правый углы
+        path.reset()
+        path.moveTo(rect.left + cut, rect.top)
+        path.lineTo(rect.right, rect.top)
+        path.lineTo(rect.right, rect.bottom - cut)
+        path.lineTo(rect.right - cut, rect.bottom)
+        path.lineTo(rect.left, rect.bottom)
+        path.lineTo(rect.left, rect.top + cut)
+        path.close()
+        fill.shader = LinearGradient(
+            0f, rect.top, 0f, rect.bottom, Pal.PANEL_TOP, Pal.PANEL_BOTTOM, Shader.TileMode.CLAMP
+        )
+        // точечная сетка
+        val step = 14f * d
+        val pts = ArrayList<Float>()
+        var y = rect.top + step
+        while (y < rect.bottom) {
+            var x = rect.left + step
+            while (x < rect.right) { pts.add(x); pts.add(y); x += step }
+            y += step
+        }
+        dotPoints = pts.toFloatArray()
+    }
+
+    override fun draw(c: Canvas) {
+        if (rect.isEmpty) return
+        c.drawPath(path, fill)
+        c.save()
+        c.clipPath(path)
+        c.drawPoints(dotPoints, dots)
+        c.restore()
+
+        // контур со слабым свечением
+        line.strokeWidth = 4f * d; line.color = 0x1436C8FF; c.drawPath(path, line)
+        line.strokeWidth = 1f * d; line.color = 0x6636C8FF; c.drawPath(path, line)
+
+        // угловые скобки в несрезанных углах (верхний правый и нижний левый)
+        val len = 20f * d
+        line.strokeWidth = 2.2f * d
+        line.color = Pal.CYAN
+        c.drawLine(rect.right - len, rect.top, rect.right, rect.top, line)
+        c.drawLine(rect.right, rect.top, rect.right, rect.top + len, line)
+        c.drawLine(rect.left, rect.bottom - len, rect.left, rect.bottom, line)
+        c.drawLine(rect.left, rect.bottom, rect.left + len, rect.bottom, line)
+    }
+
+    override fun setAlpha(alpha: Int) {}
+    override fun setColorFilter(colorFilter: ColorFilter?) {}
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+}
+
+/** Фон мелких кнопок: скошенные углы и тонкая рамка. */
+internal class ChamferDrawable(
+    private val d: Float,
+    private val fillColor: Int,
+    private val strokeColor: Int,
+    private val cutDp: Float
+) : Drawable() {
+
+    private val path = Path()
+    private val rect = RectF()
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = fillColor }
+    private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeJoin = Paint.Join.ROUND
+        strokeWidth = 1.2f * d; color = strokeColor
+    }
+
+    override fun onBoundsChange(b: Rect) {
+        rect.set(b.left + 1.5f * d, b.top + 1.5f * d, b.right - 1.5f * d, b.bottom - 1.5f * d)
+        Hud.chamfer(path, rect, cutDp * d)
+    }
+
+    override fun draw(c: Canvas) {
+        c.drawPath(path, fill)
+        c.drawPath(path, line)
+    }
+
+    override fun setAlpha(alpha: Int) {}
+    override fun setColorFilter(colorFilter: ColorFilter?) {}
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+}
+
 // ═══════════════════════════════════════════════════════════════════
-//  ВЕРТИКАЛЬНЫЙ ПОЛЗУНОК С ФИКСИРОВАННЫМИ ШАГАМИ
+//  ВЕРТИКАЛЬНЫЙ СЕГМЕНТНЫЙ ПОЛЗУНОК
 // ═══════════════════════════════════════════════════════════════════
 
 /**
  * Индекс 0 — нижний шаг (LO / OFF), последний — верхний (HI / 7).
- * Палец двигает «пилюлю» плавно, на отпускании она встаёт на ближайший шаг и вызывается onCommit.
+ * Каждый шаг — светодиодный сегмент; зажжены сегменты от нижнего до текущего.
+ * Палец двигает «курсор» плавно, на отпускании он встаёт на ближайший шаг и вызывается onCommit.
  */
 internal class VerticalStepSlider(ctx: Context) : View(ctx) {
 
@@ -679,10 +861,10 @@ internal class VerticalStepSlider(ctx: Context) : View(ctx) {
     var gutterLabels: Map<Int, String> = emptyMap()
         set(v) { field = v; invalidate() }
     var gradientColors: IntArray = intArrayOf(0xFFFFFFFF.toInt(), 0xFF888888.toInt())
-        set(v) { field = v; shaderKey = -1f; invalidate() }
+        set(v) { field = v; invalidate() }
     var gradientStops: FloatArray? = null
-        set(v) { field = v; shaderKey = -1f; invalidate() }
-    /** При этом индексе заливка не рисуется (например, OFF). */
+        set(v) { field = v; invalidate() }
+    /** При этом индексе сегменты не зажигаются (например, OFF). */
     var emptyIndex: Int = -1
 
     var onPreview: ((Int) -> Unit)? = null
@@ -695,22 +877,17 @@ internal class VerticalStepSlider(ctx: Context) : View(ctx) {
     private var dragging = false
     private var lastPreview = -1
     private var anim: ValueAnimator? = null
-    private var shaderKey = -1f
-    private var shader: Shader? = null
 
-    private val trackRect = RectF()
+    private val seg = RectF()
     private val thumbRect = RectF()
-    private val clip = Path()
     private val argb = ArgbEvaluator()
 
-    private val trackBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x14FFFFFF }
-    private val trackStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = 1f * d; color = 0x26FFFFFF
-    }
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val tick = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 1.5f * d; color = 0x55FFFFFF }
+    private val rail = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x1CBFE6FF }
+    private val segOff = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x1EBFE6FF }
+    private val segOn = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val thumbFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF0A101B.toInt() }
+    private val thumbLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val gutterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
         textAlign = Paint.Align.RIGHT
@@ -720,11 +897,11 @@ internal class VerticalStepSlider(ctx: Context) : View(ctx) {
         textAlign = Paint.Align.CENTER
     }
 
-    private val gutterW get() = min(22f * d, width * 0.26f)
+    private val gutterW get() = min(24f * d, width * 0.30f)
     private val thumbW get() = min(52f * d, width - gutterW - 2f * d)
-    private val trackW get() = thumbW * 0.76f
+    private val segW get() = thumbW * 0.72f
     private val cx get() = gutterW + (width - gutterW) / 2f
-    private val thumbH = 34f * d
+    private val thumbH = 32f * d
     private val posTop get() = thumbH / 2f + 3f * d
     private val posBottom get() = height - thumbH / 2f - 3f * d
 
@@ -809,70 +986,64 @@ internal class VerticalStepSlider(ctx: Context) : View(ctx) {
         val n = stepCount
         if (n < 2 || width == 0 || height == 0) return
 
-        val tl = cx - trackW / 2f
-        val tr = cx + trackW / 2f
-        val tTop = 2f * d
-        val tBottom = height - 2f * d
-        val rad = trackW / 2f
-        trackRect.set(tl, tTop, tr, tBottom)
-        c.drawRoundRect(trackRect, rad, rad, trackBg)
-        c.drawRoundRect(trackRect, rad, rad, trackStroke)
-
         val idxNow = shown.roundToInt().coerceIn(0, n - 1)
-        val ty = yFor(shown)
         val empty = idxNow == emptyIndex
+        val ty = yFor(shown)
 
-        if (!empty) {
-            if (shaderKey != tBottom) {
-                shader = LinearGradient(
-                    0f, tTop, 0f, tBottom, gradientColors,
-                    gradientStops, Shader.TileMode.CLAMP
-                )
-                shaderKey = tBottom
-            }
-            fill.shader = shader
-            fill.alpha = 0xE6
-            c.save()
-            clip.reset()
-            clip.addRoundRect(trackRect, rad, rad, Path.Direction.CW)
-            c.clipPath(clip)
-            c.drawRect(tl, ty, tr, tBottom, fill)
-            c.restore()
-        }
+        // тонкая направляющая
+        c.drawRoundRect(cx - 1f * d, posTop - 8f * d, cx + 1f * d, posBottom + 8f * d, d, d, rail)
 
-        // риски шагов
+        // светодиодные сегменты
+        val spacing = (posBottom - posTop) / (n - 1)
+        val segH = min(spacing * 0.62f, 26f * d)
+        val rad = 3f * d
+        val half = segW / 2f
         for (i in 0 until n) {
             val y = yFor(i.toFloat())
-            if (Math.abs(y - ty) < thumbH * 0.62f) continue
-            val half = if (gutterLabels.containsKey(i)) 6f * d else 4f * d
-            c.drawLine(cx - half, y, cx + half, y, tick)
+            seg.set(cx - half, y - segH / 2f, cx + half, y + segH / 2f)
+            val lit = !empty && i <= idxNow
+            if (lit) {
+                val col = colorAtIndex(i)
+                glow.color = Pal.withAlpha(col, 0x26)
+                c.drawRoundRect(
+                    seg.left - 2f * d, seg.top - 2f * d, seg.right + 2f * d, seg.bottom + 2f * d,
+                    rad + 2f * d, rad + 2f * d, glow
+                )
+                segOn.color = col
+                c.drawRoundRect(seg, rad, rad, segOn)
+            } else {
+                c.drawRoundRect(seg, rad, rad, segOff)
+            }
         }
 
         // подписи слева
-        gutterPaint.textSize = spPx(9.5f)
+        gutterPaint.textSize = spPx(9f)
         for ((i, text) in gutterLabels) {
             val y = yFor(i.toFloat())
             gutterPaint.color = if (i == idxNow) Pal.TEXT else Pal.TEXT_DIM
             c.drawText(text, gutterW - 3f * d, y + gutterPaint.textSize * 0.35f, gutterPaint)
         }
 
-        // «пилюля»
-        val half = thumbW / 2f
-        thumbRect.set(cx - half, ty - thumbH / 2f, cx + half, ty + thumbH / 2f)
+        // курсор: тёмная «пилюля» с неоновым контуром
+        val tHalf = thumbW / 2f
+        thumbRect.set(cx - tHalf, ty - thumbH / 2f, cx + tHalf, ty + thumbH / 2f)
+        val frac = ((ty - posTop) / (posBottom - posTop)).coerceIn(0f, 1f)
+        val col = if (empty) 0x99BFE6FF.toInt() else colorAtFraction(frac)
+        val r = 8f * d
         if (!empty) {
-            glow.color = Pal.withAlpha(colorAtFraction(((ty - posTop) / (posBottom - posTop)).coerceIn(0f, 1f)), 0x44)
-            val g = 5f * d
+            glow.color = Pal.withAlpha(col, 0x22)
             c.drawRoundRect(
-                thumbRect.left - g, thumbRect.top - g, thumbRect.right + g, thumbRect.bottom + g,
-                thumbH / 2f + g, thumbH / 2f + g, glow
+                thumbRect.left - 4f * d, thumbRect.top - 4f * d, thumbRect.right + 4f * d, thumbRect.bottom + 4f * d,
+                r + 4f * d, r + 4f * d, glow
             )
         }
-        thumbPaint.color = if (empty) 0xCCDDE3EE.toInt() else 0xFFF4F7FB.toInt()
-        c.drawRoundRect(thumbRect, thumbH / 2f, thumbH / 2f, thumbPaint)
-        thumbText.textSize = spPx(14f)
-        thumbText.color = if (empty) 0xFF55607A.toInt() else 0xFF0A0E18.toInt()
-        val label = thumbLabels[idxNow]
-        c.drawText(label, cx, ty + thumbText.textSize * 0.35f, thumbText)
+        c.drawRoundRect(thumbRect, r, r, thumbFill)
+        thumbLine.strokeWidth = 1.8f * d
+        thumbLine.color = col
+        c.drawRoundRect(thumbRect, r, r, thumbLine)
+        thumbText.textSize = spPx(13.5f)
+        thumbText.color = if (empty) Pal.TEXT_DIM else col
+        c.drawText(thumbLabels[idxNow], cx, ty + thumbText.textSize * 0.35f, thumbText)
     }
 
     override fun onDetachedFromWindow() {
@@ -894,20 +1065,22 @@ internal class SeatHeatButton(ctx: Context, private val name: String) : View(ctx
     private val d = resources.displayMetrics.density
     private val rect = RectF()
     private val body = RectF()
+    private val shape = Path()
     private val path = Path()
-    private val bg = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val seat = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val ledPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val wave = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND
     }
     private val nameP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-        textAlign = Paint.Align.CENTER; letterSpacing = 0.08f
+        textAlign = Paint.Align.CENTER; letterSpacing = 0.06f
     }
     private val levelP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-        textAlign = Paint.Align.CENTER; letterSpacing = 0.06f
+        textAlign = Paint.Align.CENTER; letterSpacing = 0.05f
     }
 
     init {
@@ -930,33 +1103,50 @@ internal class SeatHeatButton(ctx: Context, private val name: String) : View(ctx
         val h = height.toFloat()
         val active = level > 0
         val heat = if (level == 2) Pal.HEAT_HIGH else Pal.HEAT_LOW
-        val r = 20f * d
 
-        rect.set(1.5f * d, 1.5f * d, w - 1.5f * d, h - 1.5f * d)
+        val pad = 4f * d
+        rect.set(pad, pad, w - pad, h - pad)
+        Hud.chamfer(shape, rect, 14f * d)
         bg.color = when {
-            active -> Pal.withAlpha(heat, 0x33)
+            active -> Pal.withAlpha(heat, 0x26)
             isPressed -> Pal.TILE_FILL_PRESSED
             else -> Pal.TILE_FILL
         }
-        c.drawRoundRect(rect, r, r, bg)
-        stroke.color = if (active) heat else Pal.TILE_STROKE
-        stroke.strokeWidth = (if (active) 2f else 1f) * d
-        c.drawRoundRect(rect, r, r, stroke)
+        c.drawPath(shape, bg)
+        if (active) {
+            Hud.neon(c, shape, heat, d, stroke)
+        } else {
+            stroke.style = Paint.Style.STROKE; stroke.strokeJoin = Paint.Join.ROUND
+            stroke.color = Pal.TILE_STROKE; stroke.strokeWidth = 1f * d
+            c.drawPath(shape, stroke)
+        }
+        Hud.led(c, rect.left + 12f * d, rect.top + 12f * d, d, heat, active, ledPaint)
 
         // сиденье + волны тепла
-        val s = min(w * 0.52f, h * 0.46f)
-        drawSeat(c, w / 2f, h * 0.35f, s, heat)
+        val s = min(w * 0.56f, h * 0.44f)
+        drawSeat(c, w / 2f, h * 0.36f, s, heat)
 
-        nameP.textSize = spPx(10f)
+        // подписи: на узкой кнопке подбираем размер шрифта
+        val maxW = rect.width() - 10f * d
+        nameP.textSize = fit(name, nameP, spPx(10f), spPx(6.5f), maxW)
         nameP.color = Pal.TEXT_DIM
-        c.drawText(name, w / 2f, h * 0.70f, nameP)
+        val yName = h * 0.71f
+        c.drawText(name, w / 2f, yName, nameP)
 
-        levelP.textSize = spPx(14f)
+        val levelText = when (level) { 1 -> "СЛАБО"; 2 -> "СИЛЬНО"; else -> "ВЫКЛ" }
+        levelP.textSize = fit(levelText, levelP, spPx(13f), spPx(7f), maxW)
         levelP.color = if (active) heat else Pal.TEXT
-        c.drawText(
-            when (level) { 1 -> "СЛАБО"; 2 -> "СИЛЬНО"; else -> "ВЫКЛ" },
-            w / 2f, h * 0.70f + spPx(20f), levelP
-        )
+        c.drawText(levelText, w / 2f, yName + levelP.textSize * 1.45f, levelP)
+    }
+
+    private fun fit(text: String, p: Paint, start: Float, min: Float, maxW: Float): Float {
+        var size = start
+        p.textSize = size
+        while (size > min && p.measureText(text) > maxW) {
+            size -= 0.5f * d
+            p.textSize = size
+        }
+        return size
     }
 
     private fun drawSeat(c: Canvas, cx: Float, cy: Float, s: Float, heat: Int) {
@@ -979,7 +1169,7 @@ internal class SeatHeatButton(ctx: Context, private val name: String) : View(ctx
         wave.strokeWidth = 0.055f * s
         for (i in 0 until 3) {
             val x = l + (0.50f + i * 0.16f) * s
-            wave.color = if (i < lit) heat else 0x33FFFFFF
+            wave.color = if (i < lit) heat else 0x33BFE6FF
             path.reset()
             path.moveTo(x, t + 0.56f * s)
             path.cubicTo(x - 0.07f * s, t + 0.46f * s, x + 0.07f * s, t + 0.38f * s, x, t + 0.28f * s)
@@ -993,24 +1183,41 @@ internal class SeatHeatButton(ctx: Context, private val name: String) : View(ctx
 //  ПЛИТКА-ПЕРЕКЛЮЧАТЕЛЬ
 // ═══════════════════════════════════════════════════════════════════
 
-internal enum class TileIcon { DEFROST, RECIRC, AC }
+internal enum class TileIcon { DEFROST_REAR, DEFROST_FRONT, RECIRC, AC, ECO, COMFORT }
 
+/**
+ * Плитка с иконкой и подписью. Обычный режим: включено/выключено (active).
+ * Если задан tint — плитка всегда «горит» этим цветом, а valueLabel показывает текущее значение
+ * (так сделана плитка режима Эко/Комфорт).
+ */
 internal class ToggleTile(
     ctx: Context,
-    private val icon: TileIcon,
+    icon: TileIcon,
     private val label: String
 ) : View(ctx) {
 
+    var icon: TileIcon = icon
+        set(v) { if (field != v) { field = v; invalidate() } }
     var active: Boolean = false
+        set(v) { if (field != v) { field = v; invalidate() } }
+    var tint: Int? = null
+        set(v) { if (field != v) { field = v; invalidate() } }
+    var valueLabel: String? = null
         set(v) { if (field != v) { field = v; invalidate() } }
 
     private val d = resources.displayMetrics.density
     private val rect = RectF()
+    private val shape = Path()
     private val path = Path()
-    private val bg = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val ledPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ip = Paint(Paint.ANTI_ALIAS_FLAG)
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        textAlign = Paint.Align.CENTER; letterSpacing = 0.03f
+    }
+    private val valueP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
         textAlign = Paint.Align.CENTER; letterSpacing = 0.04f
     }
@@ -1034,44 +1241,101 @@ internal class ToggleTile(
     override fun onDraw(c: Canvas) {
         val w = width.toFloat()
         val h = height.toFloat()
-        val r = 18f * d
-        rect.set(1.5f * d, 1.5f * d, w - 1.5f * d, h - 1.5f * d)
+        val accent = tint ?: Pal.CYAN
+        val on = active || tint != null
 
+        val pad = 4f * d
+        rect.set(pad, pad, w - pad, h - pad)
+        Hud.chamfer(shape, rect, 12f * d)
         bg.color = when {
-            active -> Pal.withAlpha(Pal.ACCENT, 0x33)
+            on -> Pal.withAlpha(accent, 0x26)
             isPressed -> Pal.TILE_FILL_PRESSED
             else -> Pal.TILE_FILL
         }
-        c.drawRoundRect(rect, r, r, bg)
-        stroke.color = if (active) Pal.ACCENT else Pal.TILE_STROKE
-        stroke.strokeWidth = (if (active) 2f else 1f) * d
-        c.drawRoundRect(rect, r, r, stroke)
+        c.drawPath(shape, bg)
+        if (on) {
+            Hud.neon(c, shape, accent, d, stroke)
+        } else {
+            stroke.style = Paint.Style.STROKE; stroke.strokeJoin = Paint.Join.ROUND
+            stroke.color = Pal.TILE_STROKE; stroke.strokeWidth = 1f * d
+            c.drawPath(shape, stroke)
+        }
+        Hud.led(c, rect.left + 11f * d, rect.top + 11f * d, d, accent, on, ledPaint)
 
-        val color = if (active) Pal.ACCENT else Pal.ICON_OFF
-        val s = min(w * 0.30f, h * 0.38f)
-        drawIcon(c, w / 2f, h * 0.34f, s, color)
-
-        text.textSize = spPx(10f)
-        text.color = if (active) Pal.ACCENT else Pal.TEXT
+        // подписи: размер подбирается под ширину плитки
+        val maxW = rect.width() - 8f * d
         val lines = label.split('\n')
-        var y = h * 0.66f + text.textSize
+        val labelSize = fitLines(lines, text, spPx(9.5f), spPx(6.5f), maxW)
+        text.textSize = labelSize
+        val value = valueLabel
+        val valueSize = if (value != null) fitLines(listOf(value), valueP, spPx(12.5f), spPx(7f), maxW) else 0f
+        valueP.textSize = valueSize
+
+        val iconS = min(w * 0.30f, h * 0.30f).coerceAtLeast(16f * d)
+        val gap = 7f * d
+        val labelH = lines.size * labelSize * 1.2f
+        val valueH = if (value != null) valueSize * 1.45f else 0f
+        val block = iconS + gap + labelH + valueH
+        val top = ((h - block) / 2f).coerceAtLeast(rect.top + 14f * d)
+
+        drawIcon(c, w / 2f, top + iconS / 2f, iconS, if (on) accent else Pal.ICON_OFF)
+
+        text.color = if (on && value == null) accent else Pal.TEXT
+        var y = top + iconS + gap + labelSize
         for (line in lines) {
             c.drawText(line, w / 2f, y, text)
-            y += text.textSize * 1.25f
+            y += labelSize * 1.2f
+        }
+        if (value != null) {
+            valueP.color = accent
+            c.drawText(value, w / 2f, y + valueSize * 0.25f, valueP)
+        }
+    }
+
+    private fun fitLines(lines: List<String>, p: Paint, start: Float, min: Float, maxW: Float): Float {
+        var size = start
+        p.textSize = size
+        while (size > min && lines.any { p.measureText(it) > maxW }) {
+            size -= 0.5f * d
+            p.textSize = size
+        }
+        return size
+    }
+
+    private fun strokeStyle(widthS: Float, colorInt: Int) {
+        ip.style = Paint.Style.STROKE
+        ip.strokeWidth = widthS
+        ip.strokeCap = Paint.Cap.ROUND
+        ip.strokeJoin = Paint.Join.ROUND
+        ip.color = colorInt
+    }
+
+    private fun waves(c: Canvas, l: Float, t: Float, s: Float, x0: Float, y0: Float, y1: Float) {
+        for (i in 0 until 3) {
+            val x = l + (x0 + i * 0.16f) * s
+            path.reset()
+            path.moveTo(x, t + y0 * s)
+            path.cubicTo(x - 0.08f * s, t + (y0 - 0.10f) * s, x + 0.08f * s, t + (y0 - 0.20f) * s, x, t + (y0 - 0.30f) * s)
+            path.cubicTo(x - 0.06f * s, t + (y0 - 0.36f) * s, x + 0.04f * s, t + (y0 - 0.40f) * s, x, t + y1 * s)
+            c.drawPath(path, ip)
         }
     }
 
     private fun drawIcon(c: Canvas, cx: Float, cy: Float, s: Float, color: Int) {
+        val l = cx - s / 2f
+        val t = cy - s / 2f
         when (icon) {
-            TileIcon.DEFROST -> {
-                ip.style = Paint.Style.STROKE
-                ip.strokeWidth = 0.08f * s
-                ip.strokeCap = Paint.Cap.ROUND
-                ip.strokeJoin = Paint.Join.ROUND
-                ip.color = color
-                val l = cx - s / 2f
-                val t = cy - s / 2f
-                // стекло
+            TileIcon.DEFROST_REAR -> {
+                // заднее стекло + боковые зеркала + волны тепла
+                strokeStyle(0.08f * s, color)
+                body(l + 0.16f * s, t + 0.16f * s, l + 0.84f * s, t + 0.80f * s, 0.12f * s, c)
+                body(l + 0.00f * s, t + 0.40f * s, l + 0.10f * s, t + 0.58f * s, 0.04f * s, c)
+                body(l + 0.90f * s, t + 0.40f * s, l + 1.00f * s, t + 0.58f * s, 0.04f * s, c)
+                waves(c, l, t, s, 0.34f, 0.70f, 0.30f)
+            }
+            TileIcon.DEFROST_FRONT -> {
+                // лобовое стекло (трапеция) + волны тепла
+                strokeStyle(0.08f * s, color)
                 path.reset()
                 path.moveTo(l + 0.04f * s, t + 0.84f * s)
                 path.lineTo(l + 0.20f * s, t + 0.14f * s)
@@ -1079,15 +1343,7 @@ internal class ToggleTile(
                 path.lineTo(l + 0.96f * s, t + 0.84f * s)
                 path.close()
                 c.drawPath(path, ip)
-                // волны тепла
-                for (i in 0 until 3) {
-                    val x = l + (0.34f + i * 0.16f) * s
-                    path.reset()
-                    path.moveTo(x, t + 0.72f * s)
-                    path.cubicTo(x - 0.08f * s, t + 0.62f * s, x + 0.08f * s, t + 0.52f * s, x, t + 0.42f * s)
-                    path.cubicTo(x - 0.06f * s, t + 0.36f * s, x + 0.04f * s, t + 0.32f * s, x, t + 0.26f * s)
-                    c.drawPath(path, ip)
-                }
+                waves(c, l, t, s, 0.34f, 0.72f, 0.26f)
             }
             TileIcon.RECIRC -> {
                 val dr = recircDrawable
@@ -1106,6 +1362,38 @@ internal class ToggleTile(
                 ip.textSize = s * 0.85f
                 c.drawText("A/C", cx, cy + ip.textSize * 0.35f, ip)
             }
+            TileIcon.ECO -> {
+                // лист с прожилкой
+                strokeStyle(0.08f * s, color)
+                path.reset()
+                path.moveTo(l + 0.14f * s, t + 0.86f * s)
+                path.cubicTo(l + 0.06f * s, t + 0.44f * s, l + 0.40f * s, t + 0.10f * s, l + 0.90f * s, t + 0.12f * s)
+                path.cubicTo(l + 0.94f * s, t + 0.58f * s, l + 0.62f * s, t + 0.92f * s, l + 0.14f * s, t + 0.86f * s)
+                path.close()
+                c.drawPath(path, ip)
+                path.reset()
+                path.moveTo(l + 0.14f * s, t + 0.86f * s)
+                path.lineTo(l + 0.62f * s, t + 0.38f * s)
+                c.drawPath(path, ip)
+            }
+            TileIcon.COMFORT -> {
+                // четырёхконечная «искра» — режим комфорт
+                strokeStyle(0.08f * s, color)
+                path.reset()
+                path.moveTo(l + 0.50f * s, t + 0.04f * s)
+                path.quadTo(l + 0.56f * s, t + 0.44f * s, l + 0.96f * s, t + 0.50f * s)
+                path.quadTo(l + 0.56f * s, t + 0.56f * s, l + 0.50f * s, t + 0.96f * s)
+                path.quadTo(l + 0.44f * s, t + 0.56f * s, l + 0.04f * s, t + 0.50f * s)
+                path.quadTo(l + 0.44f * s, t + 0.44f * s, l + 0.50f * s, t + 0.04f * s)
+                path.close()
+                c.drawPath(path, ip)
+            }
         }
+    }
+
+    private val tmp = RectF()
+    private fun body(l: Float, t: Float, r: Float, b: Float, rad: Float, c: Canvas) {
+        tmp.set(l, t, r, b)
+        c.drawRoundRect(tmp, rad, rad, ip)
     }
 }

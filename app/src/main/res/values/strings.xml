@@ -16,4 +16,5 @@
     <string name="avg_speed">Средняя скорость</string>
     <string name="range_icon_desc">Прогноз пробега электромобиля</string>
     <string name="soc_icon_desc">Индикатор здоровья батареи (SOH)</string>Ы
+    <string name="accessibility_steering_wheel_description">Диагностика событий кнопок руля. На этом этапе нажатия не блокируются.</string>
 </resources>

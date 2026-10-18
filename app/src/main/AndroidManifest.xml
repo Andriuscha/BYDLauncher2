@@ -118,6 +118,21 @@
                 android:value="Keeps the BYD launcher process alive while the user is in the navigator or other BYD apps, so the BMS polling loop, trip recording, and GPS keep running." />
         </service>
 
+        <!-- Диагностика кнопок руля: пока только логирование, нажатия не блокируются. -->
+        <service
+            android:name=".service.SteeringWheelAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:enabled="true"
+            android:exported="true"
+            android:label="BYD Launcher — кнопки руля">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/steering_wheel_accessibility_service" />
+        </service>
+
         <!-- ═══ Boot receiver ═══ -->
         <receiver
             android:name=".BootReceiver"

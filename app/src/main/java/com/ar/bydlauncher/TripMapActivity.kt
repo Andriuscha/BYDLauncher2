@@ -77,11 +77,11 @@ class TripMapActivity : Activity() {
                     <script>
                         var map = L.map('map', { zoomControl: false });
                         
-                        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                            attribution: '&copy; OpenStreetMap &copy; CARTO',
-                            subdomains: 'abcd',
-                            maxZoom: 19
-                        }).addTo(map);
+                        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19,
+    opacity: 0.6 // Делаем карту полупрозрачной, чтобы она сливалась с черным фоном
+}).addTo(map);
 
                         var points = [$coordsJson];
                         if (points.length > 0) {
