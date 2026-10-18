@@ -188,13 +188,28 @@ class LauncherSettingsActivity : Activity() {
             Toast.makeText(this, "Сценарий в разработке", Toast.LENGTH_SHORT).show()
         }
 
-        // ── Климат — заглушка ──
+        // ── Климат ──
         val rowClimate = findViewById<View>(R.id.scenarioClimate)
         val cbClimate = findViewById<View>(R.id.cbClimate)
-        renderCheckbox(cbClimate, scenarioRepo.climateEcoEnabled)
+        var climateEnabled = scenarioRepo.climateEcoEnabled
+        renderCheckbox(cbClimate, climateEnabled)
 
         rowClimate.setOnClickListener {
-            Toast.makeText(this, "Сценарий в разработке", Toast.LENGTH_SHORT).show()
+            climateEnabled = !climateEnabled
+            scenarioRepo.climateEcoEnabled = climateEnabled
+            renderCheckbox(cbClimate, climateEnabled)
+            Toast.makeText(
+                this,
+                if (climateEnabled) "Сценарий «Эко / комфорт климат» включён" else "Сценарий «Эко / комфорт климат» выключен",
+                Toast.LENGTH_SHORT
+            ).show()
+
+            if (!climateEnabled) {
+                scope.launch {
+                    runCatching { scenarioEngine.resetAll() }
+                        .onFailure { Log.e(TAG, "resetAll failed", it) }
+                }
+            }
         }
     }
 

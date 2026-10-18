@@ -9,6 +9,9 @@ data class BatterySnapshot(
     val minCellV: Double?,
     val cellDeltaMv: Int?,
 
+    // ── ACC ──
+    val accOn: Boolean?,
+
     val maxBatTempC: Int?,
     val minBatTempC: Int?,
 

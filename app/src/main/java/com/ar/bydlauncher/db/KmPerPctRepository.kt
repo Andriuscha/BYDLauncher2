@@ -12,10 +12,24 @@ import com.ar.bydlauncher.byd.RangeMath
 
 /**
  * Хранит эмпирику "км на 1% SOC" для эмпирической модели прогноза пробега.
+ *
+ * Соглашения:
+ *  • kmPerPct     — сырой км/% поездки (при её температуре);
+ *  • kmPerPctNorm — км/%, приведённый к эталону 20°C: kmPerPct * tempK(t поездки).
+ *    tempK — множитель РАСХОДА (>1 в холод), поэтому в холод км/% при нормализации
+ *    растёт, а при применении (RangeEstimator) делится на tempK(текущая t);
+ *  • усреднение — по ΔSOC (пул Σкм/ΣΔSOC): целочисленный SOC шумит,
+ *    и пул усредняет округление; вес поездки = ΔSOC * exp(-возраст/τ);
+ *  • поездки, начатые с SOC >= TOP_SOC_EXCLUDE, не используются: у верхней границы
+ *    SOC после зарядки дельта занижена, км/% завышен.
  */
 class KmPerPctRepository(context: Context) {
 
     private val db = TripDatabase.get(context)
+
+    /** Стартовый SOC поездки из сохранённых полей: soc_avg + soc_delta / 2. */
+    private val START_SOC_SQL =
+        "(${TripDatabase.KP_SOC_AVG} + ${TripDatabase.KP_SOC_DELTA} / 2.0)"
 
     companion object {
         private const val TAG = "KmPerPctRepository"
@@ -23,7 +37,8 @@ class KmPerPctRepository(context: Context) {
         const val TAU_MS = 5L * 24 * 3600_000L       // 5 дней — для весов
         const val WINDOW_MS = 15L * 24 * 3600_000L   // окно выборки
         const val MIN_KM = 4.0                       // мин. длина поездки
-        const val MIN_SOC_DELTA = 2                   // мин. дельта SOC
+        const val MIN_SOC_DELTA = 1                   // мин. дельта SOC
+        const val TOP_SOC_EXCLUDE = 98                // старт с SOC >= этого значения — не в выборку
         const val MAX_SAMPLES = 30
         const val REF_TEMP_C = 20.0                   // эталон температуры
     }
@@ -51,11 +66,12 @@ class KmPerPctRepository(context: Context) {
             val endSoc   = trip.endSoc   ?: return@withContext
             val socDelta = startSoc - endSoc
 
+            if (startSoc >= TOP_SOC_EXCLUDE) return@withContext
             if (socDelta < MIN_SOC_DELTA) return@withContext
             if (trip.distanceKm < MIN_KM)  return@withContext
             val avgSpeed = trip.avgSpeedKmh ?: return@withContext
             if (avgSpeed < 15.0) return@withContext
-            if (trip.consumption !in 5.0..45.0) return@withContext
+            if (trip.consumption !in 5.0..30.0) return@withContext
             if (!trip.finished) return@withContext
 
             val endedAt = trip.endedAt ?: trip.startedAt
@@ -63,7 +79,7 @@ class KmPerPctRepository(context: Context) {
 
             val kmPerPct = trip.distanceKm / socDelta
             val tempK = RangeMath.tempCoefficient(tempC.toInt())
-            val kmPerPctNorm = kmPerPct / tempK
+            val kmPerPctNorm = kmPerPct * tempK   // приведение к 20°C
 
             val cv = ContentValues().apply {
                 put(TripDatabase.KP_TRIP_ID, trip.id)
@@ -88,7 +104,7 @@ class KmPerPctRepository(context: Context) {
      * Дозаписывает сэмплы по завершённым поездкам, которых ещё нет в km_per_pct.
      * Идемпотентно: для поездки, у которой сэмпл уже есть, второй не создаётся.
      * Берутся только поездки в пределах WINDOW_MS: более старые в расчёте не участвуют.
-     * Пороги (км, дельта SOC, расход, скорость) применяет recordTrip().
+     * Пороги (км, дельта SOC, расход, скорость, стартовый SOC) применяет recordTrip().
      * Возвращает число добавленных сэмплов.
      */
     suspend fun backfillFromTrips(tripRepo: TripRepository): Int = withContext(Dispatchers.IO) {
@@ -159,6 +175,7 @@ class KmPerPctRepository(context: Context) {
         val list = mutableListOf<Sample>()
         val selection = buildString {
             append("${TripDatabase.KP_ENDED_AT} >= ?")
+            append(" AND $START_SOC_SQL < $TOP_SOC_EXCLUDE")
             if (profileName != null) append(" AND ${TripDatabase.KP_PROFILE} = ?")
         }
         val args = buildList {
@@ -180,7 +197,8 @@ class KmPerPctRepository(context: Context) {
         val list = mutableListOf<Sample>()
         db.readableDatabase.query(
             TripDatabase.TABLE_KMPCT, null,
-            "${TripDatabase.KP_ENDED_AT} >= ? AND ${TripDatabase.KP_ENDED_AT} < ?",
+            "${TripDatabase.KP_ENDED_AT} >= ? AND ${TripDatabase.KP_ENDED_AT} < ? " +
+                    "AND $START_SOC_SQL < $TOP_SOC_EXCLUDE",
             arrayOf(fromMs.toString(), toMs.toString()),
             null, null, "${TripDatabase.KP_ENDED_AT} DESC"
         ).use { c ->
@@ -189,25 +207,31 @@ class KmPerPctRepository(context: Context) {
         return list
     }
 
-    private fun cursorToSample(c: android.database.Cursor): Sample = Sample(
-        tripId = c.getLong(c.getColumnIndexOrThrow(TripDatabase.KP_TRIP_ID)),
-        endedAt = c.getLong(c.getColumnIndexOrThrow(TripDatabase.KP_ENDED_AT)),
-        distanceKm = c.getDouble(c.getColumnIndexOrThrow(TripDatabase.KP_DISTANCE_KM)),
-        kmPerPct = c.getDouble(c.getColumnIndexOrThrow(TripDatabase.KP_KM_PER_PCT)),
-        kmPerPctNorm = c.getDouble(c.getColumnIndexOrThrow(TripDatabase.KP_KM_PER_PCT_NORM)),
-        tempC = c.getDouble(c.getColumnIndexOrThrow(TripDatabase.KP_TEMP_C)),
-        speedKmh = c.getDouble(c.getColumnIndexOrThrow(TripDatabase.KP_SPEED_KMH)),
-        profile = runCatching {
-            RouteProfile.valueOf(c.getString(c.getColumnIndexOrThrow(TripDatabase.KP_PROFILE)))
-        }.getOrDefault(RouteProfile.UNKNOWN),
-        socAvg = c.getDouble(c.getColumnIndexOrThrow(TripDatabase.KP_SOC_AVG)),
-        socDelta = c.getInt(c.getColumnIndexOrThrow(TripDatabase.KP_SOC_DELTA))
-    )
+    private fun cursorToSample(c: android.database.Cursor): Sample {
+        val kmPerPct = c.getDouble(c.getColumnIndexOrThrow(TripDatabase.KP_KM_PER_PCT))
+        val tempC = c.getDouble(c.getColumnIndexOrThrow(TripDatabase.KP_TEMP_C))
+        return Sample(
+            tripId = c.getLong(c.getColumnIndexOrThrow(TripDatabase.KP_TRIP_ID)),
+            endedAt = c.getLong(c.getColumnIndexOrThrow(TripDatabase.KP_ENDED_AT)),
+            distanceKm = c.getDouble(c.getColumnIndexOrThrow(TripDatabase.KP_DISTANCE_KM)),
+            kmPerPct = kmPerPct,
+            // Нормализацию считаем при чтении из kmPerPct и температуры, а не берём
+            // сохранённое поле: в старых записях оно посчитано с обратной поправкой.
+            kmPerPctNorm = kmPerPct * RangeMath.tempCoefficient(tempC.toInt()),
+            tempC = tempC,
+            speedKmh = c.getDouble(c.getColumnIndexOrThrow(TripDatabase.KP_SPEED_KMH)),
+            profile = runCatching {
+                RouteProfile.valueOf(c.getString(c.getColumnIndexOrThrow(TripDatabase.KP_PROFILE)))
+            }.getOrDefault(RouteProfile.UNKNOWN),
+            socAvg = c.getDouble(c.getColumnIndexOrThrow(TripDatabase.KP_SOC_AVG)),
+            socDelta = c.getInt(c.getColumnIndexOrThrow(TripDatabase.KP_SOC_DELTA))
+        )
+    }
 
     private fun weightedAvgNorm(samples: List<Sample>, now: Long): Double {
         val w = samples.map {
             val age = now - it.endedAt
-            val weight = it.distanceKm * exp(-age.toDouble() / TAU_MS)
+            val weight = it.socDelta * exp(-age.toDouble() / TAU_MS)
             weight to it.kmPerPctNorm
         }
         val sumW = w.sumOf { it.first }
@@ -217,7 +241,7 @@ class KmPerPctRepository(context: Context) {
     private fun weightedAvgRaw(samples: List<Sample>, now: Long): Double {
         val w = samples.map {
             val age = now - it.endedAt
-            val weight = it.distanceKm * exp(-age.toDouble() / TAU_MS)
+            val weight = it.socDelta * exp(-age.toDouble() / TAU_MS)
             weight to it.kmPerPct
         }
         val sumW = w.sumOf { it.first }

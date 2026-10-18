@@ -5,18 +5,6 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.util.Log
 
-/**
- * Единственная точка доступа к trips.db — через [get].
- *
- * Раньше TripRepository, ChargingRepository и BackupManager (6 мест) создавали
- * каждый свой SQLiteOpenHelper на один файл: несколько соединений без WAL
- * (риск "database is locked" при параллельной записи) и каждый close() закрывал
- * только своё. Теперь helper один на процесс, включён WAL (читатели не
- * блокируют писателя), а close() — намеренно no-op: общий helper закрывать нельзя,
- * иначе запросы из других потоков упадут с IllegalStateException.
- *
- * v3: добавлены km_per_pct (эмпирика км/%) и trips.route_profile.
- */
 class TripDatabase private constructor(context: Context) :
     SQLiteOpenHelper(context, DB_NAME, null, DB_VERSION) {
 
@@ -24,7 +12,6 @@ class TripDatabase private constructor(context: Context) :
         setWriteAheadLoggingEnabled(true)
     }
 
-    /** Общий helper не закрывается (см. комментарий к классу). */
     @Synchronized
     override fun close() { /* no-op */ }
 
@@ -40,7 +27,7 @@ class TripDatabase private constructor(context: Context) :
             }
 
         private const val DB_NAME = "trips.db"
-        private const val DB_VERSION = 3     // v2 → chargings, v3 → km_per_pct + route_profile
+        private const val DB_VERSION = 5     // v4 → track_points, v5 → track_points.speed_kmh
 
         // ── Trips ──
         const val TABLE = "trips"
@@ -65,7 +52,7 @@ class TripDatabase private constructor(context: Context) :
         const val COL_START_LON = "start_lon"
         const val COL_END_LAT = "end_lat"
         const val COL_END_LON = "end_lon"
-        const val COL_ROUTE_PROFILE = "route_profile"   // v3
+        const val COL_ROUTE_PROFILE = "route_profile"
 
         // ── Chargings ──
         const val TABLE_CHARGING = "chargings"
@@ -103,6 +90,15 @@ class TripDatabase private constructor(context: Context) :
         const val KP_PROFILE = "profile"
         const val KP_SOC_AVG = "soc_avg"
         const val KP_SOC_DELTA = "soc_delta"
+
+        // ── TrackPoints (v4, v5) ──
+        const val TABLE_TRACK = "track_points"
+        const val TR_ID = "id"
+        const val TR_TRIP_ID = "trip_id"
+        const val TR_LAT = "lat"
+        const val TR_LON = "lon"
+        const val TR_TS = "timestamp"
+        const val TR_SPEED_KMH = "speed_kmh" // v5
 
         private const val CREATE_TRIPS = """
             CREATE TABLE $TABLE (
@@ -172,6 +168,17 @@ class TripDatabase private constructor(context: Context) :
             )
         """
 
+        private const val CREATE_TRACK = """
+            CREATE TABLE $TABLE_TRACK (
+                $TR_ID       INTEGER PRIMARY KEY AUTOINCREMENT,
+                $TR_TRIP_ID  INTEGER NOT NULL,
+                $TR_LAT      REAL NOT NULL,
+                $TR_LON      REAL NOT NULL,
+                $TR_TS       INTEGER NOT NULL,
+                $TR_SPEED_KMH REAL
+            )
+        """
+
         private const val CREATE_INDEX_TRIPS_STARTED =
             "CREATE INDEX idx_trips_started ON $TABLE($COL_STARTED_AT)"
         private const val CREATE_INDEX_TRIPS_FINISHED =
@@ -186,6 +193,9 @@ class TripDatabase private constructor(context: Context) :
             "CREATE INDEX idx_kmpct_ended ON $TABLE_KMPCT($KP_ENDED_AT)"
         private const val CREATE_INDEX_KMPCT_PROFILE =
             "CREATE INDEX idx_kmpct_profile ON $TABLE_KMPCT($KP_PROFILE, $KP_ENDED_AT)"
+
+        private const val CREATE_INDEX_TRACK =
+            "CREATE INDEX idx_track_trip ON $TABLE_TRACK($TR_TRIP_ID, $TR_TS)"
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -201,6 +211,9 @@ class TripDatabase private constructor(context: Context) :
         db.execSQL(CREATE_KMPCT)
         db.execSQL(CREATE_INDEX_KMPCT_ENDED)
         db.execSQL(CREATE_INDEX_KMPCT_PROFILE)
+
+        db.execSQL(CREATE_TRACK)
+        db.execSQL(CREATE_INDEX_TRACK)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -220,7 +233,6 @@ class TripDatabase private constructor(context: Context) :
         }
 
         if (oldVersion < 3) {
-            // km_per_pct
             try {
                 db.execSQL(CREATE_KMPCT)
                 db.execSQL(CREATE_INDEX_KMPCT_ENDED)
@@ -234,12 +246,33 @@ class TripDatabase private constructor(context: Context) :
                 db.execSQL(CREATE_INDEX_KMPCT_PROFILE)
             }
 
-            // trips.route_profile
             try {
                 db.execSQL("ALTER TABLE $TABLE ADD COLUMN $COL_ROUTE_PROFILE TEXT")
                 Log.i(TAG, "Added trips.route_profile column")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to add route_profile column", e)
+            }
+        }
+
+        if (oldVersion < 4) {
+            try {
+                db.execSQL(CREATE_TRACK)
+                db.execSQL(CREATE_INDEX_TRACK)
+                Log.i(TAG, "Added track_points table")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create track_points table", e)
+                db.execSQL("DROP TABLE IF EXISTS $TABLE_TRACK")
+                db.execSQL(CREATE_TRACK)
+                db.execSQL(CREATE_INDEX_TRACK)
+            }
+        }
+
+        if (oldVersion < 5) {
+            try {
+                db.execSQL("ALTER TABLE $TABLE_TRACK ADD COLUMN $TR_SPEED_KMH REAL")
+                Log.i(TAG, "Added track_points.speed_kmh column")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to add speed_kmh column", e)
             }
         }
     }

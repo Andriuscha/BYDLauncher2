@@ -18,6 +18,8 @@ class AutoserviceClient(private val adb: com.ar.bydlauncher.adb.AdbClient) {
         const val DEV_INSTRUMENT = 1007
         const val DEV_CHARGING = 1009
         const val DEV_GEARBOX = 1011
+
+        const val DEV_POWER = 1005
         const val DEV_ENGINE = 1012
         const val DEV_SPEED = 1013
         const val DEV_STATISTIC = 1014

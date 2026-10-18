@@ -76,7 +76,9 @@ class RangeEstimator {
         // ВЕТКА 1: эмпирика км/% (приоритет)
         // ═════════════════════════════════════════════════════
         if (kmPerPctNorm != null && kmPerPctNorm > 0.5) {
-            val kmPerPctEff = kmPerPctNorm * tempK
+            // kmPerPctNorm приведён к 20°C (км/% * tempK поездки); tempK — множитель
+            // расхода, поэтому к текущей температуре возвращаемся делением.
+            val kmPerPctEff = kmPerPctNorm / tempK
             val mainKm = (kmPerPctEff * soc).toInt().coerceAtLeast(0)
 
             val heaterWarning = computeHeaterWarning(socPercent, maxCellV, battTempC)

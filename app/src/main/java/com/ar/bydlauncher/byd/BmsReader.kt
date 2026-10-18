@@ -23,6 +23,9 @@ class BmsReader(private val c: AutoserviceClient) {
         const val FID_VOLTAGE_12V  = 1128267816  // OTA_BATTERY_POWER_VOLTAGE (float)
         const val FID_POWER_KW     = 339738656   // ENGINE_POWER (kW)
 
+        // ── ACC ────────────────────────────────────────
+        const val FID_ACC_STATUS   = -1728053193 // Power.POWER_ACC_STATUS
+
         // ── Для TripDetector ───────────────────────────
         // GEARBOX_AUTO_MODE_TYPE: по javadoc P=1, R=2, N=3, D=4, M=5, S=6
         const val FID_GEAR_MODE    = 555745336   // Gearbox.GEARBOX_AUTO_MODE_TYPE
@@ -89,6 +92,9 @@ class BmsReader(private val c: AutoserviceClient) {
     private val reqPowerKw = AutoserviceClient.FieldRequest(
         AutoserviceClient.DEV_ENGINE, FID_POWER_KW, AutoserviceClient.ValueType.INT)
 
+    private val reqAccStatus = AutoserviceClient.FieldRequest(
+        AutoserviceClient.DEV_POWER, FID_ACC_STATUS, AutoserviceClient.ValueType.INT)
+
     private val reqGearMode = AutoserviceClient.FieldRequest(
         AutoserviceClient.DEV_GEARBOX, FID_GEAR_MODE, AutoserviceClient.ValueType.INT)
 
@@ -122,6 +128,7 @@ class BmsReader(private val c: AutoserviceClient) {
         reqLifetimeKwh, reqLifetimeKm,
         reqHvVoltage, reqHvCurrent, reqBmsState,
         reqVoltage12v, reqPowerKw,
+        reqAccStatus,
         reqGearMode, reqSpeed,
         reqGearActual, reqBeltMain, reqBeltInstr, reqBeltLf,
         reqTempOutside, reqTempInside
@@ -157,6 +164,7 @@ class BmsReader(private val c: AutoserviceClient) {
         val bmsState      = result[reqBmsState]    as? Int
         val v12           = result[reqVoltage12v]  as? Float
         val powerKw       = result[reqPowerKw]     as? Int
+        val accStatus     = result[reqAccStatus]   as? Int
         val gearMode      = result[reqGearMode]    as? Int
         val speedRaw      = result[reqSpeed]       as? Int
         val gearActual    = result[reqGearActual]  as? Int
@@ -183,6 +191,14 @@ class BmsReader(private val c: AutoserviceClient) {
             maxCellV       = maxRaw?.let { it * 0.001 },
             minCellV       = minRaw?.let { it * 0.001 },
             cellDeltaMv    = if (maxRaw != null && minRaw != null) maxRaw - minRaw else null,
+
+            // ACC
+            accOn          = when (accStatus) {
+                1 -> true
+                0 -> false
+                else -> null
+            },
+
             maxBatTempC    = maxT?.minus(40),
             minBatTempC    = minT?.minus(40),
             hvVoltageV     = hvVoltage,
@@ -215,7 +231,7 @@ class BmsReader(private val c: AutoserviceClient) {
         )
     }
 
-    /** true — пристёгнут, false — отстёгнут, null — неизвестно / незнакомое значение. */
+    /** true — пристёгнут, false — отстегнут, null — неизвестно / незнакомое значение. */
     private fun decodeBelt(raw: Int?): Boolean? = when (raw) {
         null -> null
         BELT_BUCKLED_VALUE -> true

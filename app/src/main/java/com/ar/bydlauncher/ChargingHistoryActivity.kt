@@ -82,22 +82,38 @@ class ChargingHistoryActivity : Activity() {
             val stats = repository.getTotalStats(0L, Long.MAX_VALUE)
 
             withContext(Dispatchers.Main) {
-                renderStats(stats)
+                renderStats(stats, records)
                 renderList(records)
             }
         }
     }
 
-    private fun renderStats(stats: com.ar.bydlauncher.db.ChargingStats) {
+    private fun renderStats(
+        stats: com.ar.bydlauncher.db.ChargingStats,
+        records: List<ChargingRecord>
+    ) {
         if (!::statsView.isInitialized) return
         if (stats.count == 0) {
             statsView.visibility = View.GONE
             return
         }
         statsView.visibility = View.VISIBLE
-        statsView.text = "ВСЕГО: ${stats.count}  ·  " +
-                "🚗 %.1f кВт·ч  ·  🔌 %.1f кВт·ч  ·  %.2f р"
-                    .format(stats.totalVehicleKwh, stats.totalStationKwh, stats.totalCost)
+        val sb = StringBuilder(
+            "ВСЕГО: ${stats.count}  ·  " +
+                    "🚗 %.1f кВт·ч  ·  🔌 %.1f кВт·ч  ·  %.2f р"
+                        .format(stats.totalVehicleKwh, stats.totalStationKwh, stats.totalCost)
+        )
+        // Среднее «батарея/станция» отдельно для AC и DC — по сессиям, где введена энергия станции
+        // и энергия батареи измерена (не оценена по номиналу).
+        for (type in listOf("AC", "DC")) {
+            val e = records
+                .filter { it.acDc == type && it.notes?.contains("оцен") != true }
+                .mapNotNull { it.efficiency }
+            if (e.isNotEmpty()) {
+                sb.append("\nБатарея/станция $type: %.0f%% (сессий: %d)".format(e.average() * 100, e.size))
+            }
+        }
+        statsView.text = sb.toString()
     }
 
     private fun renderList(records: List<ChargingRecord>) {
@@ -237,9 +253,12 @@ class ChargingHistoryActivity : Activity() {
 
         sb.appendLine()
         sb.appendLine("⚡ ЭНЕРГИЯ")
-        sb.appendLine("  Машина приняла:  %.2f кВт·ч".format(r.energyVehicleKwh))
+        sb.appendLine("  Принято батареей: %.2f кВт·ч (по датчику BMS)%s".format(
+            r.energyVehicleKwh,
+            if (r.notes?.contains("оцен") == true) ", оценка" else ""
+        ))
         r.energyStationKwh?.let { sb.appendLine("  Станция отдала:  %.2f кВт·ч".format(it)) }
-        r.efficiency?.let { sb.appendLine("  КПД:             %.1f%%".format(it * 100)) }
+        r.efficiency?.let { sb.appendLine("  Батарея/станция: %.1f%%".format(it * 100)) }
         r.bmsDelta?.let { sb.appendLine("  BMS counter Δ:   %.2f кВт·ч".format(it)) }
 
         if (r.bmsCounterStart != null || r.bmsCounterEnd != null) {

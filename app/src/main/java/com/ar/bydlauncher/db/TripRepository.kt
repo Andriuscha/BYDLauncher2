@@ -34,6 +34,17 @@ data class TripRecord(
     val routeProfile: RouteProfile? = null
 )
 
+data class TrackPoint(val lat: Double, val lon: Double, val ts: Long, val speedKmh: Float?)
+
+data class TripDayGroup(
+    val dayStartMs: Long,
+    val trips: List<TripRecord>,
+    val totalDistanceKm: Double,
+    val totalEnergyKwh: Double,
+    val totalDurationMin: Long,
+    val avgConsumption: Double
+)
+
 class TripRepository(context: Context) {
 
     private val db = TripDatabase.get(context)
@@ -140,6 +151,65 @@ class TripRepository(context: Context) {
         list
     }
 
+    suspend fun getGroupedByDays(): List<TripDayGroup> = withContext(Dispatchers.IO) {
+        val allTrips = getAllFinished()
+        if (allTrips.isEmpty()) return@withContext emptyList()
+
+        val grouped = mutableMapOf<Long, MutableList<TripRecord>>()
+        for (trip in allTrips) {
+            val dayStart = computeDayStart(trip.startedAt)
+            grouped.getOrPut(dayStart) { mutableListOf() }.add(trip)
+        }
+
+        grouped.map { (dayStart, trips) ->
+            val totalDist = trips.sumOf { it.distanceKm }
+            val totalEnergy = trips.sumOf { it.energyKwh }
+            val totalDur = trips.sumOf { it.durationMin }
+            val avgCons = if (totalDist > 0.1) (totalEnergy / totalDist * 100.0) else 0.0
+
+            TripDayGroup(dayStart, trips, totalDist, totalEnergy, totalDur, avgCons)
+        }.sortedByDescending { it.dayStartMs }
+    }
+
+    suspend fun insertTrackPoint(tripId: Long, lat: Double, lon: Double, ts: Long = System.currentTimeMillis(), speedKmh: Float?) = withContext(Dispatchers.IO) {
+        try {
+            val cv = ContentValues().apply {
+                put(TripDatabase.TR_TRIP_ID, tripId)
+                put(TripDatabase.TR_LAT, lat)
+                put(TripDatabase.TR_LON, lon)
+                put(TripDatabase.TR_TS, ts)
+                speedKmh?.let { put(TripDatabase.TR_SPEED_KMH, it) }
+            }
+            db.writableDatabase.insert(TripDatabase.TABLE_TRACK, null, cv)
+        } catch (t: Throwable) {
+            Log.e(TAG, "insertTrackPoint failed: ${t.message}")
+        }
+    }
+
+    suspend fun getTrackPoints(tripId: Long): List<TrackPoint> = withContext(Dispatchers.IO) {
+        val list = mutableListOf<TrackPoint>()
+        try {
+            db.readableDatabase.query(
+                TripDatabase.TABLE_TRACK, null,
+                "${TripDatabase.TR_TRIP_ID} = ?", arrayOf(tripId.toString()),
+                null, null,
+                "${TripDatabase.TR_TS} ASC"
+            ).use { c ->
+                val latIdx = c.getColumnIndexOrThrow(TripDatabase.TR_LAT)
+                val lonIdx = c.getColumnIndexOrThrow(TripDatabase.TR_LON)
+                val tsIdx = c.getColumnIndexOrThrow(TripDatabase.TR_TS)
+                val speedIdx = c.getColumnIndex(TripDatabase.TR_SPEED_KMH)
+                while (c.moveToNext()) {
+                    val speed = if (speedIdx >= 0 && !c.isNull(speedIdx)) c.getFloat(speedIdx) else null
+                    list.add(TrackPoint(c.getDouble(latIdx), c.getDouble(lonIdx), c.getLong(tsIdx), speed))
+                }
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "getTrackPoints failed: ${t.message}")
+        }
+        list
+    }
+
     suspend fun getById(id: Long): TripRecord? = withContext(Dispatchers.IO) {
         try {
             db.readableDatabase.query(
@@ -172,9 +242,6 @@ class TripRepository(context: Context) {
         list
     }
 
-    /**
-     * Последние N завершённых поездок с минимальной длиной — для BaseConsumptionRepository.
-     */
     suspend fun getRecentFinished(
         fromMs: Long,
         minKm: Double,

@@ -19,7 +19,16 @@ import java.io.File
  *
  * Если машину выключили во время зарядки и включили через какое-то время,
  * сессия восстанавливается из файла, и «дозаряд» после выключения оценивается
- * по приросту SOC с использованием номинала батареи.
+ * по приросту SOC с использованием номинала батареи. Такая энергия — оценка, а не
+ * измерение (по ней SOH вышел бы 100% по построению), поэтому сессия помечается
+ * estimated и в расчёт SOH не берётся (но в историю зарядок записывается).
+ *
+ * Что считается в SOH:
+ *  • только AC-сессии: на быстрой зарядке заметная часть энергии через клеммы уходит
+ *    в тепло внутри батареи, и ёмкость получается завышенной;
+ *  • ΔSOC не меньше MIN_DELTA_SOC, батарея MIN_TEMP_C..MAX_TEMP_C, без больших пропусков.
+ * DC-сессии и сессии с оценённой энергией сохраняются как отклонённые замеры
+ * (с причиной) — они видны в деталях батареи и пишутся в историю зарядок.
  */
 class SohCalculator(
     private val storageFile: File,
@@ -30,10 +39,10 @@ class SohCalculator(
 
         const val FORMAT_VERSION = 3
 
-        const val MIN_DELTA_SOC = 20.0
+        const val MIN_DELTA_SOC = 30.0
         const val MIN_KWH_ADDED = 0.5
-        const val MIN_TEMP_C = 15
-        const val MAX_TEMP_C = 35
+        const val MIN_TEMP_C = -10
+        const val MAX_TEMP_C = 38
         const val SOH_MIN_VALID = 60.0
         const val SOH_MAX_VALID = 105.0
         const val MAX_MEASUREMENTS = 20
@@ -116,6 +125,9 @@ class SohCalculator(
         /** true — сессия восстановлена из файла после выключения машины. */
         var resumed: Boolean = false,
 
+        /** true — часть энергии добавлена по номиналу (SOC × номинал), а не измерена. */
+        var estimated: Boolean = false,
+
         // ── Данные для истории зарядок ──
         var bmsCounterStart: Double? = null,
         var bmsCounterEnd: Double? = null,
@@ -156,6 +168,7 @@ class SohCalculator(
             put("tempOutsideEnd", tempOutsideEnd ?: JSONObject.NULL)
             put("odometerKm", odometerKm ?: JSONObject.NULL)
             put("peakPowerKw", peakPowerKw)
+            put("estimated", estimated)
         }
     }
 
@@ -224,6 +237,7 @@ class SohCalculator(
                     val missingSoc = soc - s.lastSoc
                     val missingKwh = nominalKwh * missingSoc / 100.0
                     s.energyKwh += missingKwh
+                    s.estimated = true
                     s.gapMs = 0L
                     Log.i(TAG,
                         "Resume (charging): дозаряд %.1f%% (%.2f кВт·ч), энергия → %.2f кВт·ч"
@@ -262,6 +276,7 @@ class SohCalculator(
                     val missingSoc = soc - s.lastSoc
                     val missingKwh = nominalKwh * missingSoc / 100.0
                     s.energyKwh += missingKwh
+                    s.estimated = true
                     s.lastSoc = soc
                     s.gapMs = 0L
                     Log.i(TAG,
@@ -333,7 +348,9 @@ class SohCalculator(
             kwhAdded = s.energyKwh,
             durationMs = durationMs,
             gapMs = effectiveGapMs,
-            batTempC = s.averageTemp()
+            batTempC = s.averageTemp(),
+            acDc = s.acDc(),
+            estimated = s.estimated
         )
 
         measurements.add(m)
@@ -379,7 +396,9 @@ class SohCalculator(
         kwhAdded: Double,
         durationMs: Long,
         gapMs: Long,
-        batTempC: Int?
+        batTempC: Int?,
+        acDc: String,
+        estimated: Boolean
     ): Measurement {
         val deltaSoc = socEnd - socStart
 
@@ -390,6 +409,19 @@ class SohCalculator(
                 sohPercent = soh, batTempC = batTempC,
                 rejected = true, rejectReason = reason
             )
+
+        // Оценённая энергия: SOH = 100% по построению, в расчёт не берём.
+        if (estimated)
+            return reject("Энергия частично оценена по номиналу (опрос BMS не шёл во время зарядки)")
+
+        // DC: потери внутри батареи искажают ёмкость. Для справки считаем, но не берём в SOH.
+        if (acDc != "AC") {
+            val u = if (deltaSoc > 0 && kwhAdded > 0) kwhAdded * 100.0 / deltaSoc else 0.0
+            return reject(
+                "DC-сессия: в расчёт SOH не берётся (потери в батарее на быстрой зарядке)",
+                u, u / nominalKwh * 100.0
+            )
+        }
 
         if (deltaSoc < MIN_DELTA_SOC)
             return reject("ΔSOC = %.1f%% (< %.0f%%)".format(deltaSoc, MIN_DELTA_SOC))
@@ -553,7 +585,8 @@ class SohCalculator(
                     tempOutsideStart = getDoubleOrNull("tempOutsideStart"),
                     tempOutsideEnd = getDoubleOrNull("tempOutsideEnd"),
                     odometerKm = getDoubleOrNull("odometerKm"),
-                    peakPowerKw = so.optDouble("peakPowerKw", 0.0)
+                    peakPowerKw = so.optDouble("peakPowerKw", 0.0),
+                    estimated = so.optBoolean("estimated", false)
                 )
 
                 val elapsed = System.currentTimeMillis() - restored.lastTs

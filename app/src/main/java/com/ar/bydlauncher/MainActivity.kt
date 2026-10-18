@@ -159,6 +159,10 @@ class MainActivity : Activity() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var lastSohOem: Int? = null
 
+    // ── Запись GPS-трека ──
+    private var lastTrackWriteTs = 0L
+    private var tripTrackJob: Job? = null
+
     private lateinit var navigator: NavigatorPanelController
 
     @Volatile
@@ -174,6 +178,9 @@ class MainActivity : Activity() {
         private const val MAX_CONSECUTIVE_FAILURES = 3
         private const val LIVE_UPDATE_INTERVAL_MS = 30_000L
         private const val DAY_SUMMARY_REFRESH_MS = 30_000L
+
+        // Интервал записи GPS-точек во время поездки
+        private const val TRACK_WRITE_INTERVAL_MS = 10_000L
 
         private const val NOMINAL_KWH = 44.9
 
@@ -334,7 +341,16 @@ class MainActivity : Activity() {
 
         // ── Сценарии ──
         scenarioSettings = ScenarioSettingsRepository(this)
-        scenarioEngine = ScenarioEngine(scenarioSettings, ac)
+        scenarioEngine = ScenarioEngine(scenarioSettings, ac) {
+            // Колбэк: пользователь перебил сценарий климата — показываем тост
+            runOnUiThread {
+                android.widget.Toast.makeText(
+                    this@MainActivity,
+                    "Сценарий климата отключён (ручное управление)",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+        }
 
         scope.launch {
             try {
@@ -555,7 +571,7 @@ class MainActivity : Activity() {
     }
 
     // ==================================================
-    // GPS-цикл
+    // GPS-цикл (общий для погоды)
     // ==================================================
 
     private suspend fun gpsLoop() {
@@ -592,6 +608,42 @@ class MainActivity : Activity() {
             delay(backoff)
         }
         return false
+    }
+
+    // ==================================================
+    // Цикл записи GPS-трека (работает ТОЛЬКО во время поездки)
+    // ==================================================
+
+    private fun startTrackRecording() {
+        tripTrackJob?.cancel()
+        tripTrackJob = scope.launch {
+            Log.i(TAG, "Started 10s track recording loop")
+            while (isActive) {
+                val id = currentTripId
+                if (id != null) {
+                    val loc = carLocationProvider.getCurrentLocation()
+                    if (loc != null) {
+                        lastKnownLocation = loc
+                        val now = System.currentTimeMillis()
+
+                        // Берем скорость из сглаженной переменной BMS
+                        val currentSpeed = smoothedSpeedKmh
+
+                        tripRepository.insertTrackPoint(id, loc.latitude, loc.longitude, now, currentSpeed)
+                        Log.d(TAG, "Track point saved: ${loc.latitude}, ${loc.longitude}, speed=${currentSpeed}")
+                    } else {
+                        Log.w(TAG, "Track recording: location is null")
+                    }
+                }
+                delay(TRACK_WRITE_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun stopTrackRecording() {
+        tripTrackJob?.cancel()
+        tripTrackJob = null
+        Log.i(TAG, "Stopped track recording loop")
     }
 
     // ==================================================
@@ -829,7 +881,7 @@ class MainActivity : Activity() {
                         routeProfileDetector.addSpeed(System.currentTimeMillis(), it)
                     }
 
-                    // ── НОВОЕ: Отлов выключения зажигания ──
+                    // ── Отлов выключения зажигания ──
                     if (snap.gearMode == null && lastTripState?.active == true) {
                         Log.i(TAG, "Ignition OFF detected (gearMode null) -> force close trip")
                         val closedTrip = tripDetector.onIgnitionOff(
@@ -1155,6 +1207,8 @@ class MainActivity : Activity() {
                     currentTripId = tripRepository.insertStart(record)
                     Log.i(TAG, "Trip started in DB, id=$currentTripId")
 
+                    startTrackRecording() // <-- Запуск 10-секундного цикла
+
                     val summary = tripRepository.getTodaySummary()
                     withContext(Dispatchers.Main) { updateDaySummaryUi(summary) }
                 } catch (t: Throwable) {
@@ -1167,6 +1221,7 @@ class MainActivity : Activity() {
             val now = System.currentTimeMillis()
             val endPending = trip.endPendingSince != null
             val endMarkerChanged = endPending != endMarkerWritten
+
             if (endMarkerChanged || now - lastLiveUpdateTs >= LIVE_UPDATE_INTERVAL_MS) {
                 lastLiveUpdateTs = now
                 endMarkerWritten = endPending
@@ -1218,6 +1273,9 @@ class MainActivity : Activity() {
         if (!tripWasActive) return
         tripWasActive = false
         endMarkerWritten = false
+
+        stopTrackRecording() // <-- Остановка цикла
+
         val id = currentTripId
         currentTripId = null
 
@@ -1267,10 +1325,8 @@ class MainActivity : Activity() {
             scope.launch {
                 tripRepository.finish(id, record)
                 Log.i(TAG, "Trip finished in DB, id=$id")
-                // бэкап стартует только после того, как поездка закрыта в БД
                 scope.launch { runCatching { TelegramBackupUploader.maybeAutoBackup(applicationContext) } }
 
-                // ── Записываем эмпирику км/% ──
                 try {
                     kmPerPctRepo.recordTrip(record)
                 } catch (t: Throwable) {
@@ -1304,8 +1360,6 @@ class MainActivity : Activity() {
         runCatching { captionMask.hide() }
             .onFailure { Log.w(TAG, "captionMask.hide failed: ${it.message}") }
         if (::scenarioEngine.isInitialized) {
-            // Вернуть ДХО, если выключили мы. ADB ещё жив. Поток нужен, чтобы
-            // не делать блокирующий ADB-вызов на главном потоке.
             val t = Thread { runCatching { scenarioEngine.resetAll() } }
             t.start()
             t.join(1500)
