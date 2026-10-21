@@ -45,6 +45,12 @@ data class TripDayGroup(
     val avgConsumption: Double
 )
 
+data class DayStats(
+    val startOfDayMs: Long,
+    val totalDistanceKm: Double,
+    val totalEnergyKwh: Double
+)
+
 class TripRepository(context: Context) {
 
     private val db = TripDatabase.get(context)
@@ -325,6 +331,64 @@ class TripRepository(context: Context) {
                 TripDaySummary.empty(runCatching { computeDayStart(now) }.getOrDefault(now))
             }
         }
+
+    /**
+     * Возвращает статистику за последние 3 дня (сегодня, вчера, позавчера).
+     * День считается с 06:00 до 05:59 следующего дня.
+     * ВАЖНО: Поездки короче 7 км не учитываются.
+     */
+    suspend fun getDailyStats(): List<DayStats> = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val todayStart = computeDayStart(now)
+        val yesterdayStart = todayStart - 24 * 60 * 60 * 1000L
+        val dayBeforeStart = yesterdayStart - 24 * 60 * 60 * 1000L
+
+        val list = mutableListOf<DayStats>()
+
+        try {
+            val sql = """
+                SELECT
+                    ${TripDatabase.COL_STARTED_AT},
+                    ${TripDatabase.COL_DISTANCE},
+                    ${TripDatabase.COL_ENERGY}
+                FROM ${TripDatabase.TABLE}
+                WHERE ${TripDatabase.COL_FINISHED} = 1
+                AND ${TripDatabase.COL_STARTED_AT} >= ?
+                AND ${TripDatabase.COL_DISTANCE} >= 7.0
+                ORDER BY ${TripDatabase.COL_STARTED_AT} ASC
+            """.trimIndent()
+
+            val args = arrayOf(dayBeforeStart.toString())
+
+            db.readableDatabase.rawQuery(sql, args).use { c ->
+                val startedAtIdx = c.getColumnIndexOrThrow(TripDatabase.COL_STARTED_AT)
+                val distIdx = c.getColumnIndexOrThrow(TripDatabase.COL_DISTANCE)
+                val energyIdx = c.getColumnIndexOrThrow(TripDatabase.COL_ENERGY)
+
+                while (c.moveToNext()) {
+                    val startedAt = c.getLong(startedAtIdx)
+                    val dist = c.getDouble(distIdx)
+                    val energy = c.getDouble(energyIdx)
+
+                    val dayStart = computeDayStart(startedAt)
+
+                    val existing = list.find { it.startOfDayMs == dayStart }
+                    if (existing != null) {
+                        val index = list.indexOf(existing)
+                        list[index] = existing.copy(
+                            totalDistanceKm = existing.totalDistanceKm + dist,
+                            totalEnergyKwh = existing.totalEnergyKwh + energy
+                        )
+                    } else {
+                        list.add(DayStats(dayStart, dist, energy))
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "getDailyStats failed: ${t.message}", t)
+        }
+        list
+    }
 
     private fun computeDayStart(now: Long): Long {
         val cal = Calendar.getInstance()

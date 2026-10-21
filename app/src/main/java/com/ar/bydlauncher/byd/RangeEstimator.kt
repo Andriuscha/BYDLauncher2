@@ -1,19 +1,19 @@
 package com.ar.bydlauncher.byd
 
+import com.ar.bydlauncher.db.DayStats
 import com.ar.bydlauncher.weather.Weather
+import java.util.Calendar
 
 class RangeEstimator {
 
     companion object {
         const val NOMINAL_KWH = 44.9
+        const val DEFAULT_CONSUMPTION = 13.5 // Если вообще нет данных
 
         // Пороги для heaterWarning
         const val HEATER_SOC_THRESHOLD = 30f
         const val HEATER_CELLV_THRESHOLD = 3.0
         const val HEATER_TEMP_THRESHOLD = 0
-
-        // Порог для "нет условий" в favorable
-        private const val FAVORABLE_MAX_PCT = 5
     }
 
     data class Factor(
@@ -23,26 +23,18 @@ class RangeEstimator {
     )
 
     enum class Severity { OK, WARN, BAD }
-
     enum class Trend { UP, DOWN, FLAT }
-
-    enum class EstimateSource { KM_PER_PCT, BASE_RECENT, FALLBACK }
 
     data class Estimate(
         val mainKm: Int,
         val consumption: Double,
-        val baseConsumption: Double,
         val heaterWarning: Boolean,
         val factors: List<Factor>,
         val favorable: Boolean,
         val routeProfile: RouteProfile,
-        val calibrationFactor: Double,
-
-        // ── НОВОЕ ──
-        val kmPerPctCurrent: Double?,      // на месте "МАКС"
-        val kmPerPctWeekAvg: Double?,      // на месте "МИН"
-        val kmPerPctTrend: Trend,
-        val source: EstimateSource
+        val kmPerPctCurrent: Double?, // Оставляем для совместимости с UI
+        val kmPerPctWeekAvg: Double?,
+        val kmPerPctTrend: Trend
     )
 
     fun estimate(
@@ -55,125 +47,134 @@ class RangeEstimator {
         weather: Weather? = null,
         carBearing: Float? = null,
         routeProfile: RouteProfile = RouteProfile.UNKNOWN,
-        calibrationFactor: Double = 1.0,
-
-        // ── НОВЫЕ ВХОДЫ ──
-        kmPerPctNorm: Double? = null,      // из KmPerPctRepository.getNormalized(profile)
-        kmPerPctWeekAvg: Double? = null,   // из KmPerPctRepository.getSmoothedKmPerPct()
-        kmPerPctPrevWeekAvg: Double? = null,
-        baseRecent: Double? = null         // из BaseConsumptionRepository.getRecentBase()
+        dailyStats: List<DayStats>
     ): Estimate {
 
         val soc = socPercent
-        val tempC = tempOutsideC ?: 22
-        val tempK = RangeMath.tempCoefficient(tempC)
-        val speedK = RangeMath.speedCoefficient(avgSpeedKmh)
-        val windRes = windCoefficient(weather, carBearing)
-        val windK = windRes.first
-        val precipK = precipCoefficient(weather)
+        val soh = sohPercent ?: 100
 
-        // ═════════════════════════════════════════════════════
-        // РАСЧЕТ ФИЗИЧЕСКОЙ МОДЕЛИ (нужен как "якорь")
-        // ═════════════════════════════════════════════════════
-        val base = baseRecent ?: RangeMath.BASE_DEFAULT_KWH100
-        val weatherRaw = tempK * speedK * windK * precipK
-        val weatherWeighted = 1.0 + (weatherRaw - 1.0) * routeProfile.weatherWeight
-        val physConsumption = base * routeProfile.extraK * weatherWeighted
-        val soh = (sohPercent ?: 100) / 100.0
-        val effectiveKwh = NOMINAL_KWH * soh * (soc / 100.0)
+        // 1. Вычисляем доступную энергию
+        // Реальная емкость = 44.9 * (SOH / 100)
+        // Остаток = Реальная емкость * (SOC / 100)
+        val realCapacityKwh = NOMINAL_KWH * (soh / 100.0)
+        val availableKwh = realCapacityKwh * (soc / 100.0)
 
-        val physKm = if (physConsumption > 0.5) {
-            (effectiveKwh / physConsumption * 100).toInt().coerceAtLeast(0)
-        } else 0
+        // 2. Находим статистику за сегодня, вчера и позавчера
+        val todayStart = getTodayStart()
+        val yesterdayStart = todayStart - 24 * 60 * 60 * 1000L
+        val dayBeforeStart = yesterdayStart - 24 * 60 * 60 * 1000L
 
-        // ═════════════════════════════════════════════════════
-        // ВЕТКА 1: эмпирика км/% (с защитой от аномалий)
-        // ═════════════════════════════════════════════════════
-        if (kmPerPctNorm != null && kmPerPctNorm > 0.5) {
-            val kmPerPctEff = kmPerPctNorm / tempK
-            val empiricalKm = (kmPerPctEff * soc).toInt().coerceAtLeast(0)
+        val today = dailyStats.find { it.startOfDayMs == todayStart }
+        val yesterday = dailyStats.find { it.startOfDayMs == yesterdayStart }
+        val dayBefore = dailyStats.find { it.startOfDayMs == dayBeforeStart }
 
-            // Защита: если эмпирика дает меньше 75% от физики — она "сломана" (пробки/трасса/мороз)
-            // Берем среднее между физикой и эмпирикой, либо доверяем физике
-            val mainKm = if (empiricalKm < physKm * 0.75) {
-                // Эмпирика слишком пессимистична — смешиваем 50/50
-                ((empiricalKm + physKm) / 2.0).toInt()
-            } else {
-                empiricalKm
-            }
-
-            val heaterWarning = computeHeaterWarning(socPercent, maxCellV, battTempC)
-            val favorable = mainKm > 0 && !heaterWarning
-
-            // Для consumption показываем "эквивалент" из км/%
-            val equivalentConsumption = if (kmPerPctEff > 0.5) {
-                NOMINAL_KWH / (kmPerPctEff * 100) * 100
-            } else 0.0
-
-            val factors = buildFactorsEmpirical(
-                tempK = tempK,
-                profile = routeProfile,
-                windK = windK,
-                windLabel = windRes.second,
-                precipK = precipK
-            )
-
-            return Estimate(
-                mainKm = mainKm,
-                consumption = equivalentConsumption,
-                baseConsumption = baseRecent ?: RangeMath.BASE_DEFAULT_KWH100,
-                heaterWarning = heaterWarning,
-                factors = factors,
-                favorable = favorable,
-                routeProfile = routeProfile,
-                calibrationFactor = calibrationFactor,
-                kmPerPctCurrent = kmPerPctEff,
-                kmPerPctWeekAvg = kmPerPctWeekAvg,
-                kmPerPctTrend = computeTrend(kmPerPctWeekAvg, kmPerPctPrevWeekAvg),
-                source = EstimateSource.KM_PER_PCT
-            )
+        fun getCons(stats: DayStats?): Double? {
+            if (stats == null || stats.totalDistanceKm < 0.1) return null
+            return (stats.totalEnergyKwh / stats.totalDistanceKm) * 100.0
         }
 
-        // ═════════════════════════════════════════════════════
-        // ВЕТКА 2: baseRecent или FALLBACK
-        // ═════════════════════════════════════════════════════
-        val source = if (baseRecent != null) EstimateSource.BASE_RECENT else EstimateSource.FALLBACK
+        val cToday = getCons(today)
+        val cYesterday = getCons(yesterday)
+        val cDayBefore = getCons(dayBefore)
+
+        // 3. Считаем базовый расход по весам
+        var baseConsumption = DEFAULT_CONSUMPTION
+
+        if (today != null && today.totalDistanceKm > 10.0 && cToday != null) {
+            // Есть статистика за сегодня (>10 км): 50% сегодня, 35% вчера, 15% позавчера
+            var sumWeights = 0.5
+            var sumCons = cToday * 0.5
+
+            if (cYesterday != null) {
+                sumCons += cYesterday * 0.35
+                sumWeights += 0.35
+            }
+            if (cDayBefore != null) {
+                sumCons += cDayBefore * 0.15
+                sumWeights += 0.15
+            }
+            baseConsumption = sumCons / sumWeights
+        } else {
+            // Нет статистики за сегодня: 70% вчера, 30% позавчера
+            var sumWeights = 0.0
+            var sumCons = 0.0
+
+            if (cYesterday != null) {
+                sumCons += cYesterday * 0.7
+                sumWeights += 0.7
+            }
+            if (cDayBefore != null) {
+                sumCons += cDayBefore * 0.3
+                sumWeights += 0.3
+            }
+
+            if (sumWeights > 0) {
+                baseConsumption = sumCons / sumWeights
+            }
+        }
+
+        // 4. Накладываем погодные штрафы (для города, МКАД, трассы)
+        val windRes = windCoefficient(weather, carBearing)
+        val precipK = precipCoefficient(weather)
+
+        // Вес погоды зависит от профиля (в городе ветер/дождь меньше влияют, на трассе - больше)
+        val weatherRaw = windRes.first * precipK
+        val weatherWeighted = 1.0 + (weatherRaw - 1.0) * routeProfile.weatherWeight
+
+        val finalConsumption = baseConsumption * weatherWeighted
+
+        // 5. Итоговый прогноз
+        val mainKm = if (finalConsumption > 0.1) {
+            (availableKwh / finalConsumption * 100).toInt().coerceAtLeast(0)
+        } else 0
+
+        // 6. Факторы для UI
+        val factors = mutableListOf<Factor>()
+        if (windRes.first > 1.02) {
+            factors.add(Factor("ВСТРЕЧНЫЙ ВЕТЕР", ((windRes.first - 1) * 100).toInt(), Severity.WARN))
+        } else if (windRes.first < 0.98) {
+            factors.add(Factor("ПОПУТНЫЙ ВЕТЕР", ((windRes.first - 1) * 100).toInt(), Severity.OK))
+        }
+        if (precipK > 1.0) {
+            factors.add(Factor("ОСАДКИ", ((precipK - 1) * 100).toInt(), Severity.WARN))
+        }
+        if (tempOutsideC != null && tempOutsideC < 10) {
+            factors.add(Factor("ХОЛОД", ((10 - tempOutsideC) * 2), Severity.WARN))
+        }
 
         val heaterWarning = computeHeaterWarning(socPercent, maxCellV, battTempC)
-        val favorable = physKm > 0 && !heaterWarning && factorsAreFavorable(
-            tempK, speedK, routeProfile, windK, precipK, windRes.second, calibrationFactor
-        )
+        val favorable = mainKm > 0 && !heaterWarning && factors.isEmpty()
 
-        val factors = buildFactorsPhysical(
-            tempK = tempK,
-            speedK = speedK,
-            profile = routeProfile,
-            windK = windK,
-            windLabel = windRes.second,
-            precipK = precipK,
-            weather = weather,
-            calibrationFactor = calibrationFactor
-        )
+        // 7. Эквивалент км/% для UI (чтобы не ломать старый интерфейс)
+        val kmPerPctCurrent = if (finalConsumption > 0.1) (NOMINAL_KWH / finalConsumption) else null
+
+        // Для недельного среднего берем вчерашний расход
+        val kmPerPctWeekAvg = cYesterday?.let { NOMINAL_KWH / it }
 
         return Estimate(
-            mainKm = physKm,
-            consumption = physConsumption,
-            baseConsumption = base,
+            mainKm = mainKm,
+            consumption = finalConsumption,
             heaterWarning = heaterWarning,
             factors = factors,
             favorable = favorable,
             routeProfile = routeProfile,
-            calibrationFactor = calibrationFactor,
-            kmPerPctCurrent = null,
+            kmPerPctCurrent = kmPerPctCurrent,
             kmPerPctWeekAvg = kmPerPctWeekAvg,
-            kmPerPctTrend = computeTrend(kmPerPctWeekAvg, kmPerPctPrevWeekAvg),
-            source = source
+            kmPerPctTrend = Trend.FLAT
         )
     }
 
-    // ────────────────────────────────────────────────────────
-    // Вспомогательные
-    // ────────────────────────────────────────────────────────
+    private fun getTodayStart(): Long {
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.HOUR_OF_DAY, 6)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        if (System.currentTimeMillis() < cal.timeInMillis) {
+            cal.add(Calendar.DAY_OF_MONTH, -1)
+        }
+        return cal.timeInMillis
+    }
 
     private fun computeHeaterWarning(
         socPercent: Float,
@@ -184,52 +185,7 @@ class RangeEstimator {
                 (maxCellV ?: 5.0) < HEATER_CELLV_THRESHOLD + 0.10 &&
                 (battTempC ?: 20) <= HEATER_TEMP_THRESHOLD + 3
 
-    private fun computeTrend(
-        current: Double?,
-        previous: Double?
-    ): Trend {
-        if (current == null || previous == null || previous < 0.1) return Trend.FLAT
-        val ratio = current / previous
-        return when {
-            ratio > 1.02 -> Trend.UP
-            ratio < 0.98 -> Trend.DOWN
-            else         -> Trend.FLAT
-        }
-    }
-
-    private fun factorsAreFavorable(
-        tempK: Double,
-        speedK: Double,
-        profile: RouteProfile,
-        windK: Double,
-        precipK: Double,
-        windLabel: String,
-        calibrationFactor: Double
-    ): Boolean {
-        val tempPct = ((tempK - 1.0) * 100).toInt()
-        val speedPct = ((speedK - 1.0) * 100).toInt()
-        val windPct = ((windK - 1.0) * 100).toInt()
-        val precipPct = ((precipK - 1.0) * 100).toInt()
-        val calPct = ((calibrationFactor - 1.0) * 100).toInt()
-
-        return Math.abs(tempPct) < FAVORABLE_MAX_PCT &&
-                Math.abs(speedPct) < FAVORABLE_MAX_PCT &&
-                Math.abs(windPct) < FAVORABLE_MAX_PCT &&
-                precipPct < FAVORABLE_MAX_PCT &&
-                Math.abs(calPct) < FAVORABLE_MAX_PCT
-    }
-
-    // ────────────────────────────────────────────────────────
-    // Коэффициенты — делегаты в RangeMath
-    // ────────────────────────────────────────────────────────
-
-    private fun tempCoefficient(tempOut: Int): Double = RangeMath.tempCoefficient(tempOut)
-    private fun speedCoefficient(speedKmh: Float): Double = RangeMath.speedCoefficient(speedKmh)
-
-    private fun windCoefficient(
-        weather: Weather?,
-        carBearing: Float?
-    ): Pair<Double, String> {
+    private fun windCoefficient(weather: Weather?, carBearing: Float?): Pair<Double, String> {
         val speed = weather?.windSpeedMs ?: return 1.0 to ""
         val windDir = weather.windDirection
         if (speed < 3f) return 1.0 to ""
@@ -272,121 +228,5 @@ class RangeEstimator {
             rain < 7.0f -> 1.10
             else        -> 1.18
         }
-    }
-
-    // ────────────────────────────────────────────────────────
-    // Факторы (для UI — подпись под прогнозом)
-    // ────────────────────────────────────────────────────────
-
-    private fun buildFactorsEmpirical(
-        tempK: Double,
-        profile: RouteProfile,
-        windK: Double,
-        windLabel: String,
-        precipK: Double
-    ): List<Factor> {
-        val list = mutableListOf<Factor>()
-
-        val tempPct = ((tempK - 1.0) * 100).toInt()
-        if (Math.abs(tempPct) >= 2) {
-            list.add(Factor(
-                label = "ХОЛОД",
-                percent = tempPct,
-                severity = when {
-                    tempPct >= 25 -> Severity.BAD
-                    tempPct >= 10 -> Severity.WARN
-                    else          -> Severity.OK
-                }
-            ))
-        }
-
-        val windPct = ((windK - 1.0) * 100).toInt()
-        if (Math.abs(windPct) >= 3 && windLabel.isNotEmpty()) {
-            list.add(Factor(
-                label = windLabel,
-                percent = windPct,
-                severity = if (windPct > 0) Severity.WARN else Severity.OK
-            ))
-        }
-
-        val precipPct = ((precipK - 1.0) * 100).toInt()
-        if (precipPct >= 3) {
-            list.add(Factor(
-                label = "ОСАДКИ",
-                percent = precipPct,
-                severity = if (precipPct >= 15) Severity.BAD else Severity.WARN
-            ))
-        }
-
-        return list
-    }
-
-    private fun buildFactorsPhysical(
-        tempK: Double,
-        speedK: Double,
-        profile: RouteProfile,
-        windK: Double,
-        windLabel: String,
-        precipK: Double,
-        weather: Weather?,
-        calibrationFactor: Double
-    ): List<Factor> {
-        val list = mutableListOf<Factor>()
-
-        val calPct = ((calibrationFactor - 1.0) * 100).toInt()
-        if (Math.abs(calPct) >= 3) {
-            list.add(Factor(
-                label = "КАЛИБРОВКА",
-                percent = calPct,
-                severity = Severity.OK
-            ))
-        }
-
-        val tempPct = ((tempK - 1.0) * 100).toInt()
-        if (Math.abs(tempPct) >= 2) {
-            list.add(Factor(
-                label = "ХОЛОД",
-                percent = tempPct,
-                severity = when {
-                    tempPct >= 25 -> Severity.BAD
-                    tempPct >= 10 -> Severity.WARN
-                    else          -> Severity.OK
-                }
-            ))
-        }
-
-        val speedPct = ((speedK - 1.0) * 100).toInt()
-        if (Math.abs(speedPct) >= 3 && !profile.isDefault) {
-            list.add(Factor(
-                label = profile.label,
-                percent = speedPct,
-                severity = when (profile) {
-                    RouteProfile.HIGHWAY -> Severity.WARN
-                    RouteProfile.MKAD    -> Severity.WARN
-                    else                 -> Severity.OK
-                }
-            ))
-        }
-
-        val windPct = ((windK - 1.0) * 100).toInt()
-        if (Math.abs(windPct) >= 3 && windLabel.isNotEmpty()) {
-            list.add(Factor(
-                label = windLabel,
-                percent = windPct,
-                severity = if (windPct > 0) Severity.WARN else Severity.OK
-            ))
-        }
-
-        val precipPct = ((precipK - 1.0) * 100).toInt()
-        if (precipPct >= 3) {
-            val label = if ((weather?.snowfall ?: 0f) > 0.1f) "СНЕГ" else "ДОЖДЬ"
-            list.add(Factor(
-                label = label,
-                percent = precipPct,
-                severity = if (precipPct >= 15) Severity.BAD else Severity.WARN
-            ))
-        }
-
-        return list
     }
 }

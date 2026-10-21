@@ -53,8 +53,6 @@ import com.ar.bydlauncher.byd.RouteProfileDetector
 import com.ar.bydlauncher.byd.CalibrationRepository
 import com.ar.bydlauncher.scenario.ScenarioEngine
 import com.ar.bydlauncher.scenario.ScenarioSettingsRepository
-import com.ar.bydlauncher.db.KmPerPctRepository
-import com.ar.bydlauncher.db.BaseConsumptionRepository
 import com.ar.bydlauncher.backup.TelegramBackupUploader
 
 class MainActivity : Activity() {
@@ -134,8 +132,6 @@ class MainActivity : Activity() {
     // ── Сценарии ──
     private lateinit var scenarioSettings: ScenarioSettingsRepository
     private lateinit var scenarioEngine: ScenarioEngine
-    private lateinit var kmPerPctRepo: KmPerPctRepository
-    private lateinit var baseConsumptionRepo: BaseConsumptionRepository
 
     @Volatile
     private var lastEstimatedConsumption: Double = 0.0
@@ -338,11 +334,11 @@ class MainActivity : Activity() {
         comfortPopup = ComfortPopup(this, adb, btnClimate).apply {
             onShown = {
                 selectDockButton(btnClimate)
-                navigator.onOverlayShown() // <-- ДОБАВЛЕНО
+                navigator.onOverlayShown()
             }
             onDismissed = {
                 selectDockButton(btnNav)
-                navigator.onOverlayDismissed() // <-- ДОБАВЛЕНО
+                navigator.onOverlayDismissed()
             }
         }
 
@@ -350,13 +346,10 @@ class MainActivity : Activity() {
         tripRepository = TripRepository(this)
         calibrationRepo = CalibrationRepository(this)
         chargingRepository = ChargingRepository(this)
-        kmPerPctRepo = KmPerPctRepository(this)
-        baseConsumptionRepo = BaseConsumptionRepository(this)
 
         // ── Сценарии ──
         scenarioSettings = ScenarioSettingsRepository(this)
         scenarioEngine = ScenarioEngine(scenarioSettings, ac) {
-            // Колбэк: пользователь перебил сценарий климата — показываем тост
             runOnUiThread {
                 android.widget.Toast.makeText(
                     this@MainActivity,
@@ -391,17 +384,12 @@ class MainActivity : Activity() {
                             routeProfile = o.routeProfile
                         )
                         tripRepository.finish(o.id, rec)
-                        kmPerPctRepo.recordTrip(rec)
                         Log.w(TAG, "Closed orphan id=${o.id}, endedAt=$fallbackEnd")
                     }
                 }
 
                 val summary = tripRepository.getTodaySummary()
                 withContext(Dispatchers.Main) { updateDaySummaryUi(summary) }
-
-                // ── Дозапись эмпирики км/% по уже закрытым поездкам (идемпотентно) ──
-                val added = kmPerPctRepo.backfillFromTrips(tripRepository)
-                Log.i(TAG, "km/% backfill at start: +$added")
             } catch (t: Throwable) {
                 Log.e(TAG, "onCreate init DB failed: ${t.javaClass.simpleName}: ${t.message}", t)
             }
@@ -519,7 +507,6 @@ class MainActivity : Activity() {
             openInternalActivity(Intent(this@MainActivity, LauncherSettingsActivity::class.java))
         }
         btnClimate.setOnClickListener {
-            // Всплывающее окно «Климат» (оверлей), а не отдельная Activity
             comfortPopup.toggle()
         }
         btnTrip.setOnClickListener {
@@ -885,8 +872,6 @@ class MainActivity : Activity() {
                     if (fails >= MAX_CONSECUTIVE_FAILURES) {
                         Log.w(TAG, "Потеряна связь с ADB. Переподключение...")
                         if (::scenarioEngine.isInitialized) {
-                            // Вернуть ДХО, если выключили мы. ADB ещё жив. Поток нужен, чтобы
-                            // не делать блокирующий ADB-вызов на главном потоке.
                             val t = Thread { runCatching { scenarioEngine.resetAll() } }
                             t.start()
                             t.join(1500)
@@ -945,7 +930,6 @@ class MainActivity : Activity() {
 
         val carBearing = carLocationProvider.getCurrentBearing()
         val routeProfile = routeProfileDetector.getProfile()
-        val calibrationFactor = calibrationRepo.getCalibrationFactor(s.tempOutsideC ?: 15)
 
         val soc: Int = (s.socPercent ?: 0f).toInt()
         bmsSoc.text = soc.toString()
@@ -1044,14 +1028,7 @@ class MainActivity : Activity() {
         bmsRouteProfileBadge.setTextColor(badgeColor)
 
         // ═══ Эмпирика км/% и базовый расход ═══
-        val kmPerPctNorm = kmPerPctRepo.getNormalized(routeProfile)
-        val kmPerPctWeekAvg = kmPerPctRepo.getSmoothedKmPerPct()
-        val now = System.currentTimeMillis()
-        val kmPerPctPrevWeekAvg = kmPerPctRepo.getAvgForWindow(
-            now - 14L * 24 * 3600_000L,
-            now -  7L * 24 * 3600_000L
-        )
-        val baseRecent = baseConsumptionRepo.getRecentBase()
+        val dailyStats = tripRepository.getDailyStats()
 
         val est = rangeEstimator.estimate(
             socPercent        = s.socPercent ?: 0f,
@@ -1063,11 +1040,7 @@ class MainActivity : Activity() {
             weather           = lastWeather,
             carBearing        = carBearing,
             routeProfile      = routeProfile,
-            calibrationFactor = calibrationFactor,
-            kmPerPctNorm        = kmPerPctNorm,
-            kmPerPctWeekAvg     = kmPerPctWeekAvg,
-            kmPerPctPrevWeekAvg = kmPerPctPrevWeekAvg,
-            baseRecent          = baseRecent
+            dailyStats        = dailyStats // <-- Передаем статистику
         )
 
         lastEstimatedConsumption = est.consumption
@@ -1127,7 +1100,7 @@ class MainActivity : Activity() {
 
         Log.i(TAG, "Range: main=${est.mainKm} км/%=${est.kmPerPctCurrent} " +
                 "week=${est.kmPerPctWeekAvg} trend=${est.kmPerPctTrend} " +
-                "source=${est.source} cons=${String.format(Locale.US, "%.2f", est.consumption)}")
+                "cons=${String.format(Locale.US, "%.2f", est.consumption)}")
 
         bmsCellMax.text = s.maxCellV?.let { String.format(Locale.US, "%.3f", it) } ?: "—"
         bmsCellMin.text = s.minCellV?.let { String.format(Locale.US, "%.3f", it) } ?: "—"
@@ -1348,12 +1321,6 @@ class MainActivity : Activity() {
                 tripRepository.finish(id, record)
                 Log.i(TAG, "Trip finished in DB, id=$id")
                 scope.launch { runCatching { TelegramBackupUploader.maybeAutoBackup(applicationContext) } }
-
-                try {
-                    kmPerPctRepo.recordTrip(record)
-                } catch (t: Throwable) {
-                    Log.e(TAG, "kmPerPctRepo.recordTrip failed", t)
-                }
 
                 val summary = tripRepository.getTodaySummary()
                 withContext(Dispatchers.Main) { updateDaySummaryUi(summary) }
