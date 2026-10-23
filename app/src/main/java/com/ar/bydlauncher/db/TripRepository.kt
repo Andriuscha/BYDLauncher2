@@ -337,11 +337,22 @@ class TripRepository(context: Context) {
      * День считается с 06:00 до 05:59 следующего дня.
      * ВАЖНО: Поездки короче 7 км не учитываются.
      */
+    /**
+     * Возвращает статистику за последние 3 дня (сегодня, вчера, позавчера).
+     * День считается с 06:00 до 05:59 следующего дня.
+     * ВАЖНО: Поездки короче 7 км не учитываются.
+     *
+     * Учитываются и завершённые поездки, и текущая активная (если она началась
+     * меньше 2 часов назад — защита от "зависших" записей в БД).
+     */
     suspend fun getDailyStats(): List<DayStats> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         val todayStart = computeDayStart(now)
         val yesterdayStart = todayStart - 24 * 60 * 60 * 1000L
         val dayBeforeStart = yesterdayStart - 24 * 60 * 60 * 1000L
+
+        // Порог "свежести" для незавершённых поездок: 2 часа
+        val activeThreshold = now - 2 * 60 * 60 * 1000L
 
         val list = mutableListOf<DayStats>()
 
@@ -352,13 +363,17 @@ class TripRepository(context: Context) {
                     ${TripDatabase.COL_DISTANCE},
                     ${TripDatabase.COL_ENERGY}
                 FROM ${TripDatabase.TABLE}
-                WHERE ${TripDatabase.COL_FINISHED} = 1
-                AND ${TripDatabase.COL_STARTED_AT} >= ?
+                WHERE ${TripDatabase.COL_STARTED_AT} >= ?
                 AND ${TripDatabase.COL_DISTANCE} >= 7.0
+                AND (
+                    ${TripDatabase.COL_FINISHED} = 1
+                    OR
+                    (${TripDatabase.COL_FINISHED} = 0 AND ${TripDatabase.COL_STARTED_AT} >= ?)
+                )
                 ORDER BY ${TripDatabase.COL_STARTED_AT} ASC
             """.trimIndent()
 
-            val args = arrayOf(dayBeforeStart.toString())
+            val args = arrayOf(dayBeforeStart.toString(), activeThreshold.toString())
 
             db.readableDatabase.rawQuery(sql, args).use { c ->
                 val startedAtIdx = c.getColumnIndexOrThrow(TripDatabase.COL_STARTED_AT)
